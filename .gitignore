@@ -1,0 +1,5 @@
+# Scratch / local-only files
+TEST.red
+
+# Temporary PDFs written by tests/check.red --pdf
+check-*.pdf

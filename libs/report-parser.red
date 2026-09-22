@@ -1,0 +1,449 @@
+Red [
+    File: %report-parser.red
+    Purpose: "Parse report-page dialect into structured data for rendering"
+    Exports: [parse-report dump-report validate-report]
+]
+
+#include %report-styles.red
+
+report-parser: context [
+
+    ;--- Helpers ---------------------------------------------------------------
+
+ is-style?: func [blk [block!]][
+    ; Style blocks contain formatting directives (words, numbers, tuples)
+    ; Data blocks contain strings or nested blocks
+    not any [find blk string!  find blk block!]
+]
+
+parse-pairs: func [
+    "Parse a line into value-style pairs; the inherited base plus a leading style-block style the line, per-value styles merge on top, and !X drops X from all higher levels"
+    blk [block!] base [block!]
+    /local result val sty eff
+][
+    result: copy []
+    eff: base
+    ; optional leading style block applies to every value on the line
+    if all [not tail? blk block? blk/1 is-style? blk/1][
+        eff: report-styles/merge-styles eff blk/1
+        blk: next blk
+    ]
+    while [not tail? blk][
+        val: blk/1
+        sty: none
+        blk: next blk
+        if all [not tail? blk block? blk/1 is-style? blk/1][
+            sty: blk/1
+            blk: next blk
+        ]
+        append/only result reduce [val either sty [report-styles/merge-styles eff sty][copy eff]]
+    ]
+    result
+]
+
+known-keywords: [header body footer table image column pagebreak]
+paper-sizes:    [a4 letter legal a3 a5]
+margin-sides:   [top bottom left right margin]
+
+parse-margin-spec: func [
+    "Parse a margin word like 'top-20 / 'right-10 / 'margin-20. Returns [side n] or none."
+    d [word!]
+    /local s side n
+][
+    s: form d
+    either parse s [copy side to "-" "-" copy n to end][
+        n: attempt [to integer! n]
+        if all [n  find margin-sides to word! side][reduce [to word! side n]]
+    ][
+        none
+    ]
+]
+
+parse-section: func [
+    {Parse a block of items into lines or keyword objects.
+     Uniform item grammar: [known-word args... [items]?]  |  [value [styles]? ...]}
+    blk [block!]
+    /base bs [block!]
+    /local result pos val kw-type kw-args body inner cbs ta a col-img
+][
+    result: copy []
+    pos: blk
+    if none? bs [bs: copy []]
+
+    while [not tail? pos][
+        ;--- Paren expressions (safety net if not pre-composed) ---
+        if paren? pos/1 [
+            val: do pos/1
+            if block? val [append result parse-section/base val bs]
+            pos: next pos
+            continue
+        ]
+
+        ;--- Keyword item: [known-word args... [items]?] ---
+        if all [
+            block? pos/1
+            not empty? pos/1
+            any-word? pos/1/1
+            find known-keywords to word! pos/1/1
+        ][
+            kw-type: to word! pos/1/1
+            kw-args: copy []
+            body: copy []
+            col-img: none
+            inner: next pos/1
+            ; COLUMN: optional "image [styles]" clause after the text args carries the styles
+            ; for contained IMAGE rows; the last block is the items. Generic args (before the
+            ; image marker) style text rows only.
+            if kw-type = 'column [
+                while [not tail? inner][
+                    either all [any [word? inner/1 lit-word? inner/1]  (lowercase form inner/1) = "image"][
+                        inner: next inner
+                        if all [not tail? inner block? inner/1][
+                            col-img: inner/1
+                            inner: next inner
+                        ]
+                    ][
+                        either paren? inner/1 [
+                            val: do inner/1
+                            either block? val [
+                                body: parse-section/base val bs
+                                inner: next inner
+                                break
+                            ][
+                                append kw-args inner/1
+                                inner: next inner
+                            ]
+                        ][
+                            either block? inner/1 [
+                                body: parse-section/base inner/1 bs
+                                inner: next inner
+                                break
+                            ][
+                                append kw-args inner/1
+                                inner: next inner
+                            ]
+                        ]
+                    ]
+                ]
+                append/only result object [type: kw-type args: kw-args img: col-img lines: body]
+                pos: next pos
+                continue
+            ]
+            ; args: values up to the first block or paren (the items block)
+            while [all [not tail? inner not block? inner/1 not paren? inner/1]][
+                append kw-args inner/1
+                inner: next inner
+            ]
+            ; content base = inherited base merged with this item's style args;
+            ; sections and TABLE thread their style args to their content
+            cbs: bs
+            switch kw-type [
+                header [cbs: report-styles/merge-styles bs kw-args]
+                body   [cbs: report-styles/merge-styles bs kw-args]
+                footer [cbs: report-styles/merge-styles bs kw-args]
+                table  [
+                    ta: copy []
+                    foreach a kw-args [
+                        unless find ["BOX" "ALT"] uppercase copy form a [append ta a]
+                    ]
+                    cbs: report-styles/merge-styles bs ta
+                ]
+            ]
+            ; optional items block (a paren yields items when it evaluates to a block)
+            case [
+                all [not tail? inner paren? inner/1][
+                    val: do inner/1
+                    if block? val [body: parse-section/base val cbs]
+                ]
+                all [not tail? inner block? inner/1][
+                    either all [kw-type = 'image  not empty? inner/1  not block? inner/1/1][
+                        ; IMAGE caption: a value-leading block is ONE [value [styles]] line
+                        body: reduce [parse-pairs inner/1 cbs]
+                    ][
+                        body: parse-section/base inner/1 cbs
+                    ]
+                ]
+            ]
+            append/only result object [type: kw-type args: kw-args lines: body]
+            pos: next pos
+            continue
+        ]
+
+        ;--- Line block: [value [styles]? value [styles]? ...] ---
+        if block? pos/1 [
+            append/only result parse-pairs pos/1 bs
+            pos: next pos
+            continue
+        ]
+
+        ;--- Skip anything else ---
+        pos: next pos
+    ]
+    result
+]
+
+    ;--- Top-level page parsing -----------------------------------------------
+
+    set 'parse-report func [
+        {Parse a report page into a structured object. A page is an optional paper clause
+         (leading paper-size word, WxH pair, and/or landscape/portrait) followed by block
+         items; the HEADER, BODY and FOOTER section items split into the section objects.
+         BODY is required; HEADER and FOOTER are optional and may appear in any order.
+         Default paper is a4 portrait.}
+        page [block!]
+        /local items h-args h-lines c-args c-lines f-args f-lines has-body
+               size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right
+    ][
+        ;--- Paper clause: leading size/orientation/margin words or a WxH pair before the items ---
+        size-n: 'a4
+        orient-n: 'portrait
+        t-n: b-n: l-n: r-n: m-u: none
+        clause: copy []
+        pos: page
+        while [all [not tail? pos  any [word? pos/1  pair? pos/1]]][
+            d: pos/1
+            append/only clause d
+            case [
+                pair? d                          [size-n: d]
+                all [word? d  find paper-sizes to word! d]   [size-n: to word! d]
+                all [word? d  d = 'landscape]    [orient-n: 'landscape]
+                all [word? d  d = 'portrait]     [orient-n: 'portrait]
+                all [word? d  ms: parse-margin-spec d][
+                    n: ms/2
+                    switch ms/1 [
+                        margin [m-u: n]          ; uniform base for all four
+                        top    [t-n: n]         ; individual overrides, order-independent
+                        bottom [b-n: n]
+                        left   [l-n: n]
+                        right  [r-n: n]
+                    ]
+                ]
+                true                             []
+            ]
+            pos: next pos
+        ]
+        ; individual side always wins over margin-N; margin-N over the 50 default
+        m-top:    any [t-n m-u 50]
+        m-bottom: any [b-n m-u 50]
+        m-left:   any [l-n m-u 50]
+        m-right:  any [r-n m-u 50]
+
+        h-args: h-lines: c-args: c-lines: f-args: f-lines: copy []
+        has-body: false
+
+        items: parse-section pos
+        foreach it items [
+            if all [object? it find [header body footer] it/type][
+                switch it/type [
+                    header [h-args: it/args  h-lines: it/lines]
+                    body   [c-args: it/args  c-lines: it/lines  has-body: true]
+                    footer [f-args: it/args  f-lines: it/lines]
+                ]
+            ]
+        ]
+
+        unless has-body [
+            print "ERROR: Failed to parse page structure (is BODY present and a block?)"
+            return none
+        ]
+
+        object [
+            paper:       reduce [size-n orient-n]
+            paper-args:  clause
+            margin:      object [top: m-top bottom: m-bottom left: m-left right: m-right]
+            header:  object [args: h-args lines: h-lines]
+            content: object [args: c-args lines: c-lines]
+            footer:  object [args: f-args lines: f-lines]
+        ]
+    ]
+
+    ;--- Validation ------------------------------------------------------------
+
+    set 'validate-report func [
+        {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
+        page [block!]
+        /local err pg msg ln i row a
+    ][
+        ;--- Parse under try: catches runtime errors in parens etc. ---
+        err: try [pg: parse-report page]
+        if error? err [
+            return rejoin [
+                err/type " error: " err/id
+                either err/near [rejoin [" near " mold err/near]][""]
+            ]
+        ]
+        if not object? pg [
+            return "Could not parse page structure (is BODY present and a block?)"
+        ]
+
+        ;--- Paper clause ---
+        foreach d pg/paper-args [
+            unless any [
+                pair? d
+                all [word? d find paper-sizes to word! d]
+                all [word? d find [landscape portrait] d]
+                all [word? d parse-margin-spec d]
+            ][
+                return rejoin ["Paper directive '" mold d "' is not a size (a4 letter legal a3 a5), a WxH pair, landscape/portrait, or a margin (top/bottom/left/right|margin-N)"]
+            ]
+        ]
+
+        ;--- Structural checks per section ---
+        foreach [sec-name sec] reduce [
+            "HEADER" pg/header
+            "BODY" pg/content
+            "FOOTER" pg/footer
+        ][
+            unless all [object? sec block? sec/lines][
+                return rejoin [sec-name ": section missing or malformed"]
+            ]
+            i: 0
+            foreach ln sec/lines [
+                i: i + 1
+                if not block? ln [
+                    unless object? ln [
+                        return rejoin [sec-name " line " i ": expected a text line or keyword, got " mold ln]
+                    ]
+                    either find [header body footer] ln/type [
+                        return rejoin [sec-name " line " i ": '" ln/type "' is a section keyword; sections are only allowed at the top level"]
+                    ][
+                        unless find [table image column pagebreak] ln/type [
+                            return rejoin [sec-name " line " i ": unknown keyword '" ln/type]
+                        ]
+                    ]
+                    switch ln/type [
+                        image [
+                            if (length? ln/args) < 1 [
+                                return rejoin [sec-name " line " i ": IMAGE needs a file, e.g. [IMAGE %file.jpg] or [IMAGE 60 %file.jpg]"]
+                            ]
+                            either (length? ln/args) >= 2 [
+                                unless any [number? ln/args/1 issue? ln/args/1] [
+                                    return rejoin [sec-name " line " i ": IMAGE width must be a number or #px/#ch tag, got " mold ln/args/1]
+                                ]
+                                unless any [file? ln/args/2 string? ln/args/2] [
+                                    return rejoin [sec-name " line " i ": IMAGE file must be a file path, got " mold ln/args/2]
+                                ]
+                            ][
+                                unless any [file? ln/args/1 string? ln/args/1] [
+                                    return rejoin [sec-name " line " i ": IMAGE needs a file path, got " mold ln/args/1]
+                                ]
+                            ]
+                            if (length? ln/args) > 2 [
+                                return rejoin [sec-name " line " i ": IMAGE takes at most (width file); put caption and its styles in a nested block, e.g. [IMAGE 60 %f [Caption [shadow 3 silver]]]"]
+                            ]
+                            if (length? ln/lines) > 1 [
+                                return rejoin [sec-name " line " i ": IMAGE takes at most one caption line"]
+                            ]
+                            if not empty? ln/lines [
+                                cap-line: ln/lines/1
+                                unless all [block? cap-line not empty? cap-line block? cap-line/1 not empty? cap-line/1] [
+                                    return rejoin [sec-name " line " i ": IMAGE caption must be a line like [Caption [styles]], got " mold cap-line]
+                                ]
+                                unless string? cap-line/1/1 [
+                                    return rejoin [sec-name " line " i ": IMAGE caption value must be a string, got " mold cap-line/1/1]
+                                ]
+                            ]
+                        ]
+                        column [
+                            if empty? ln/lines [
+                                return rejoin [sec-name " line " i ": COLUMN has no data block"]
+                            ]
+                            wg: 0
+                            foreach a ln/args [
+                                either any [number? a issue? a a = 'auto][
+                                    wg: wg + 1
+                                    if wg > 2 [
+                                        return rejoin [sec-name " line " i ": COLUMN takes at most (width gap), got " mold ln/args]
+                                    ]
+                                ][
+                                    aw: form a
+                                    unless any [
+                                        find [b i u s m h1 h2 h3] a
+                                        a = 'shadow
+                                        all [word? a tuple? attempt [get a]]
+                                        all [(length? aw) >= 2 (first aw) = #"!"]
+                                        all [(length? aw) >= 6 (copy/part aw 5) = "link-"]
+                                        all [(length? aw) >= 6 (copy/part aw 5) = "hint-"]
+                                    ][
+                                        return rejoin [sec-name " line " i ": COLUMN arg must be a number, #px/#ch tag, 'auto or a style word (m s b u i h1 h2 h3 !u link-N), got " mold a]
+                                    ]
+                                ]
+                            ]
+                            if ln/img [
+                                foreach st ln/img [
+                                    unless any [
+                                        all [word? st find [shadow border] st]
+                                        issue? st
+                                        integer? st
+                                        tuple? st
+                                        all [word? st tuple? attempt [get st]]
+                                        all [word? st find [b i u s m h1 h2 h3 !u < > ^] st]
+                                        all [(length? form st) >= 2 (first form st) = #"!"]
+                                        all [(length? form st) >= 6 (copy/part form st 5) = "link-"]
+                                        all [(length? form st) >= 6 (copy/part form st 5) = "hint-"]
+                                    ][
+                                        return rejoin [sec-name " line " i ": COLUMN image style must be shadow/border, an inset number, a color, or a caption style (b i u m s h1-h3 link-N), got " mold st]
+                                    ]
+                                ]
+                            ]
+                        ]
+                        table [
+                            if empty? ln/lines [
+                                return rejoin [sec-name " line " i ": TABLE has no data block"]
+                            ]
+                            row: 0
+                            foreach r ln/lines [
+                                row: row + 1
+                                unless any [block? r all [object? r r/type = 'pagebreak]] [
+                                    return rejoin [sec-name " line " i ": TABLE row " row " must be a line block, got " mold r]
+                                ]
+                            ]
+                        ]
+                        pagebreak [true] ; any args acceptable
+                    ]
+                ]
+            ]
+        ]
+        ""
+    ]
+
+    ;--- Debug dump ------------------------------------------------------------
+
+    set 'dump-report func [
+        "Print parsed page structure for inspection"
+        pg [object!]
+        /local line
+    ][
+        print ["  paper:" mold pg/paper "  args:" mold pg/paper-args]
+        print "=== HEADER ==="
+        print ["  args:" mold pg/header/args]
+        foreach line pg/header/lines [
+            print ["  LINE:" mold line]
+        ]
+
+        print "^/=== BODY ==="
+        print ["  args:" mold pg/content/args]
+        foreach line pg/content/lines [
+            either object? line [
+                print ["  " uppercase form line/type "args:" mold line/args]
+                foreach row line/lines [
+                    either all [object? row row/type = 'pagebreak][
+                        print ["    PAGEBREAK" either empty? row/args [""][" args:" mold row/args]]
+                    ][
+                        print ["    " mold row]
+                    ]
+                ]
+            ][
+                print ["  TEXT:" mold line]
+            ]
+        ]
+
+        print "^/=== FOOTER ==="
+        print ["  args:" mold pg/footer/args]
+        foreach line pg/footer/lines [
+            print ["  LINE:" mold line]
+        ]
+    ]
+
+] ; report-parser context
+
