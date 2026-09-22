@@ -276,9 +276,17 @@ Sketch of the first three (content only, to be written during implementation):
   (spec §12, recommendation P4 #11). It opens a window only for a valid report and
   returns `""` after that window closes, or the problem message (no window) when
   invalid. Samples therefore stay minimal — no per-file validation boilerplate —
-  and the sampler distinguishes "invalid" from "opened and closed". This is the one
-  intentional change to `libs/` (the other five files are byte-identical to the
-  predecessor).
+  and the sampler distinguishes "invalid" from "opened and closed".
+- **IMAGE width** — the width belongs to the image, so it is the optional **first
+  argument** (`[IMAGE 120 %file …]`, bare number = px; `#Npx`/`#Nch` also accepted).
+  The parser already validated this form, but both renderers were only reading a
+  `#Npx` from the caption style block, so the argument was silently ignored; the
+  renderers now honour the argument (caption `#Npx`/`#Nch` remains as a fallback).
+  `libs/report-styles.red`, `libs/report-view.red` and `libs/report-pdf.red` changed
+  for this.
+
+So `libs/` is no longer byte-identical to the predecessor: `report-styles.red`,
+`report-view.red` and `report-pdf.red` carry the fixes above.
 
 Also learned while implementing: Red changes the working directory to the
 top-level script's own directory, so the sampler's `%samples/` resolves from any

@@ -823,7 +823,7 @@ report-view: make report-styles [
         line [object!]
         /local ia img-file img-obj aspect avail-h avail-w base-w w
                ge base-color img-cap img-w img-h bw bh bx by ix iy block-h cap-h cap-info cap-styles
-               left-a right-a top-a bot-a
+               decl-w left-a right-a top-a bot-a
     ][
         ia: parse-image-args line/args
         if all [not empty? ia ia/2][
@@ -834,12 +834,13 @@ report-view: make report-styles [
                 base-color: cap-info/2
                 img-cap: cap-info/1
                 cap-styles: cap-info/5
+                decl-w: image-declared-width ia cap-info
                 aspect: to float! img-obj/size/y / img-obj/size/x
                 cap-h: either img-cap [line-height][0]
                 ; reserve the caption line + the line below so the whole block fits the page
                 avail-h: max 1 (usable-top - page-bottom - line-height - cap-h)
                 avail-w: max 1 (page-width - margin-left - margin-right)
-                base-w: either cap-info/8 [width-to-px cap-info/8 'px][
+                base-w: either decl-w [width-to-px decl-w 'px][
                     ; no width: contain the image in the available height (and width), keep aspect
                     w: img-obj/size/x
                     if img-obj/size/y > avail-h [w: max 1 (to integer! (avail-h / aspect))]
@@ -853,7 +854,7 @@ report-view: make report-styles [
                 if (page-y - block-h - line-height - cap-h) < page-bottom [
                     new-page
                     avail-h: max 1 (page-y - page-bottom - line-height - cap-h)
-                    base-w: either cap-info/8 [width-to-px cap-info/8 'px][
+                    base-w: either decl-w [width-to-px decl-w 'px][
                         w: img-obj/size/x
                         if img-obj/size/y > avail-h [w: max 1 (to integer! (avail-h / aspect))]
                         if w > avail-w [w: avail-w]

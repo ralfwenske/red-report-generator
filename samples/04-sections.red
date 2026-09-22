@@ -1,6 +1,6 @@
 Red [
     Title: "04 — Sections"
-    Demo:  "HEADER, BODY and FOOTER, with the <page> and <pages> tokens"
+    Demo:  "PAGEBREAK, with the <page> and <pages> tokens"
     Level: 2
     Needs: 'View
 ]

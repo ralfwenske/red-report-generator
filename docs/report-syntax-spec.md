@@ -165,6 +165,7 @@ line-item    := [ value style-block? value style-block? … ]
 
 - *width* — column width: a bare number (in `ch` units, see §7), an explicit unit
   tag `#Npx` / `#Nch`, or `auto` to auto-measure the widest row. Omitted → `auto`.
+  (Unlike `IMAGE`, whose bare width argument is px — §4.4.)
 - *gap* — space between columns: bare number in `ch`, or `#Npx`/`#Nch`; default `1ch`, minimum `1ch`.
   **`gap` cannot be set unless `width` is present** — the first arg is always the width.
   To set only the gap, give `auto` as the width: `[COLUMN auto 2 …]`.
@@ -190,21 +191,22 @@ line-item    := [ value style-block? value style-block? … ]
 
 ### 4.4 Image items
 
-`[IMAGE file]`  |  `[IMAGE file [caption [styles]]]`
+`[IMAGE width? file]`  |  `[IMAGE width? file [caption [styles]]]`
 
-- *file* — a `file!` or `string!` path. **There is no width argument** — the display width is
-  carried in the style block as `#Npx` / `#Nch`.
-- *width* — optional `#Npx` / `#Nch` at the start of the style block. When omitted the image uses
-  its **intrinsic width, contained to the available height and width** (proportions kept).
-  Inside a `COLUMN` a width-less image is contained to the column width (see §4.3).
 - *file* — a `file!` or `string!` path.
+- *width* — optional first argument, **belonging to the image** (not the caption): a bare
+  number is pixels (see §7), or `#Npx` / `#Nch` for an explicit unit. When omitted the image
+  uses its **intrinsic width, contained to the available height and width** (proportions
+  kept). Inside a `COLUMN` a width-less image is contained to the column width (see §4.3).
+  For backward compatibility a `#Npx` / `#Nch` at the start of the caption style block is
+  also honoured as a fallback when no width argument is given.
 - The optional trailing block is the image's **caption line** — exactly one value + a style block.
 - *caption* — a `string!`, drawn **centered one line below** the image. When the caption line is
   omitted, the caption defaults to the **file's name without extension** (`Empress.jpg` → `Empress`);
   a `""` value gives **no caption**.
 - *styles* (the caption's style block) — IMAGE-specific grammar, in order:
-  1. optional **width** `#Npx` / `#Nch` (see *width* above), then optional `shadow` or `border` —
-     `shadow` = drop shadow (base and image the same size, the base offset down-right); `border` = a frame box;
+  1. optional `shadow` or `border` — `shadow` = drop shadow (base and image the same size, the
+     base offset down-right); `border` = a frame box;
   2. optional **integer** — the inset / offset in points (**defaults to 5% of the image width**);
   3. optional **color** — the shadow/border colour (default `silver`); the **first** colour after
      `shadow`/`border` is consumed as the box colour;
@@ -213,10 +215,10 @@ line-item    := [ value style-block? value style-block? … ]
      `link-N`/`hint-N` make the **whole image area** an interactive hotspot (the caption is the
      popup text, `N` the id); `link-N` implies a solid underline, `hint-N` a dotted one (View-only).
 - Examples:
-  - `[IMAGE %tutorials/thumbs/Empress.jpg]` — intrinsic width contained to the page; caption `Empress`.
-  - `[IMAGE %tutorials/thumbs/Empress.jpg ["Empress" [#120px shadow 3 red link-1]]]` — 120 px, shadow, red box, linked.
-  - `[IMAGE %tutorials/thumbs/Empress.jpg ["Empress" [border 3 silver]]]` — intrinsic width, silver frame box.
-  - `[IMAGE %tutorials/thumbs/Empress.jpg ["Empress" [b red blue]]]` — no box; bold caption, red on blue.
+  - `[IMAGE %Empress.jpg]` — intrinsic width contained to the page; caption `Empress`.
+  - `[IMAGE 120 %Empress.jpg ["Empress" [shadow 3 red link-1]]]` — 120 px, red shadow, linked.
+  - `[IMAGE #120px %Empress.jpg ["Empress" [border 3 silver]]]` — explicit px unit, silver frame box.
+  - `[IMAGE %Empress.jpg ["Empress" [b red blue]]]` — intrinsic width, no box; bold caption, red on blue.
   - `[COLUMN #120px #4ch image [shadow 3 silver] [ [IMAGE %a.jpg] [IMAGE %b.jpg [""]] ]]` — a column
     of images, silver shadow, uniform row height; captions default to the file name, the second has none.
 - Height derives from the image's aspect ratio; the base extends the occupied height.

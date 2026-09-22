@@ -892,6 +892,14 @@ report-styles: context [
         w
     ]
 
+    image-declared-width: func [
+        {Declared width of an IMAGE line: the width argument if given (bare number = px,
+         or #Npx/#Nch), else a #Npx/#Nch at the start of the caption style block; none = intrinsic.}
+        ia [block!] cap-info [block!]
+    ][
+        either ia/1 [ia/1][cap-info/8]
+    ]
+
     image-stem: func [
         "Image filename without directory or extension, as a string (Empress.jpg -> Empress)."
         f [file!]

@@ -843,12 +843,13 @@ report-pdf: make report-styles [
                                 base-color: cap-info/2
                                 img-cap: cap-info/1
                                 cap-styles: cap-info/5
+                                decl-w: image-declared-width ia cap-info
                                 img-aspect: to float! img-obj/size/y / img-obj/size/x
                                 cap-h: either img-cap [line-height][0]
                                 ; reserve the caption line + the line below so the whole block fits the page
                                 img-avail-h: max 1 (usable-top - page-bottom - line-height - cap-h)
                                 img-avail-w: max 1 (page-width - margin-left - margin-right)
-                                img-base-w: either cap-info/8 [width-to-px cap-info/8 'px][
+                                img-base-w: either decl-w [width-to-px decl-w 'px][
                                     ; no width: contain the image in the available height (and width), keep aspect
                                     iw: img-obj/size/x
                                     if img-obj/size/y > img-avail-h [iw: max 1 (to integer! (img-avail-h / img-aspect))]
@@ -861,7 +862,7 @@ report-pdf: make report-styles [
                                 if (page-y - block-h - line-height - cap-h) < page-bottom [
                                     new-page
                                     img-avail-h: max 1 (page-y - page-bottom - line-height - cap-h)
-                                    img-base-w: either cap-info/8 [width-to-px cap-info/8 'px][
+                                    img-base-w: either decl-w [width-to-px decl-w 'px][
                                         iw: img-obj/size/x
                                         if img-obj/size/y > img-avail-h [iw: max 1 (to integer! (img-avail-h / img-aspect))]
                                         if iw > img-avail-w [iw: img-avail-w]

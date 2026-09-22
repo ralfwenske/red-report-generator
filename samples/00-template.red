@@ -24,7 +24,7 @@ Red [
 
 report: [
     [BODY [
-        ["Replace this line with the one idea this sample teaches" [h2]]
+        ["Replace this line with a couple of ideas this sample teaches" [h3]]
     ]]
 ]
 

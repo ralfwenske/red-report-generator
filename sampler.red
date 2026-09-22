@@ -89,7 +89,7 @@ win: layout [
     backdrop silver
     below
     h2 "Report Generator Sampler"
-    h4 "Click a sample for its goal; double-click to show its source and render it."
+    h4 "Click a sample to show its source. Double-click to render it."
     demo: h5 bold 760 "(select a sample)"
     across
     list: text-list 240x560 data names
@@ -100,7 +100,7 @@ win: layout [
         react [
             ;probe code/parent 
             code/size: (code/parent/size - 280x180) 
-            ;probe code/size
+        ;probe code/size
         ]
         return
     button "Quit"  [quit]
