@@ -1,5 +1,5 @@
 Red [
-    Title: "02 — Styles"
+    Title: "020 — Styles"
     Demo:  "bold, italic, underline, mono and colours; alignment on one line"
     Level: 2
     Needs: 'View

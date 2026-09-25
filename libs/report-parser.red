@@ -231,7 +231,7 @@ parse-section: func [
         h-args: h-lines: c-args: c-lines: f-args: f-lines: copy []
         has-body: false
 
-        items: parse-section pos
+        items: parse-section/base pos report-styles/base-styles
         foreach it items [
             if all [object? it find [header body footer] it/type][
                 switch it/type [
@@ -242,10 +242,7 @@ parse-section: func [
             ]
         ]
 
-        unless has-body [
-            print "ERROR: Failed to parse page structure (is BODY present and a block?)"
-            return none
-        ]
+        unless has-body [return none]
 
         object [
             paper:       reduce [size-n orient-n]
@@ -259,11 +256,130 @@ parse-section: func [
 
     ;--- Validation ------------------------------------------------------------
 
+    ; style-word vocabulary is defined once in report-styles (style-words)
+
+    style-word-ok?: func [
+        {Is an atom allowed in a style block? Allows decoration/heading/family words,
+         format words, alignment (< > ^), shadow/border, link-N/hint-N, !X negations,
+         widths (integer/float, #Npx/#Nch) and colour words/tuples.}
+        s [any-type!]
+    ][
+        case [
+            tuple? s [true]
+            issue? s [true]          ; #Npx / #Nch
+            number? s [true]         ; integer width or float number-format
+            word? s [
+                any [
+                    find report-styles/style-words s
+                    all [(length? form s) >= 6 (copy/part form s 5) = "link-"]
+                    all [(length? form s) >= 6 (copy/part form s 5) = "hint-"]
+                    all [
+                        (length? form s) >= 2
+                        (first form s) = #"!"
+                        find report-styles/style-words to word! copy skip form s 1
+                    ]
+                    tuple? attempt [get s]    ; colour word
+                ]
+            ]
+            true [false]
+        ]
+    ]
+
+    check-line-styles: func [
+        "Validate the style blocks of a parsed text line (block of [value styles] pairs). Returns a message or none."
+        sec-name [string!] i [integer!] ln [block!]
+        /local pair
+    ][
+        foreach pair ln [
+            if all [(length? pair) >= 2 block? pair/2][
+                foreach s pair/2 [
+                    unless style-word-ok? s [
+                        return rejoin [sec-name " line " i ": unknown style word '" mold s "'"]
+                    ]
+                ]
+            ]
+        ]
+        none
+    ]
+
+    bad-negation: func [
+        {First !X anywhere in the page whose X is not a known style word, or none.
+         Needed because merge-styles consumes !X before the merged-style check sees it.}
+        blk [block!]
+        /local v f
+    ][
+        foreach v blk [
+            either block? v [
+                if msg: bad-negation v [return msg]
+            ][
+                if all [word? v (length? f: form v) >= 2 (first f) = #"!"][
+                    unless find report-styles/style-words to word! copy skip f 1 [return v]
+                ]
+            ]
+        ]
+        none
+    ]
+
+    page-problem: func [
+        {First obvious structural problem in a raw page block, or none. Cheap pre-check
+         so validate-report can explain mistakes (unknown keyword/paper directive,
+         bare words) before parse-report, which assumes validated input.}
+        page [block!]
+        /local pos d w
+    ][
+        ; leading paper clause: words and/or a WxH pair
+        pos: page
+        while [all [not tail? pos any [word? pos/1 pair? pos/1]]][
+            d: pos/1
+            if word? d [
+                w: to word! d
+                case [
+                    find paper-sizes w []
+                    find [landscape portrait] w []
+                    parse-margin-spec d []
+                    find known-keywords w [
+                        return rejoin ["Section keyword '" mold d "' must be written as a block item, e.g. [" form w " [...]]"]
+                    ]
+                    true [
+                        return rejoin [
+                            "Unknown word '" mold d
+                            "' (expected a paper size a4/a5/a3/letter/legal, a WxH pair, landscape/portrait, a margin like margin-20, or a block item like [BODY [...]])"
+                        ]
+                    ]
+                ]
+            ]
+            pos: next pos
+        ]
+        ; items: every one should be a block (a paren is allowed as a computed block)
+        while [not tail? pos][
+            d: pos/1
+            case [
+                word? d [
+                    return rejoin ["Bare word '" mold d "' between items; each item is written as a block, e.g. [BODY [...]]"]
+                ]
+                all [block? d not empty? d word? d/1 not find known-keywords to word! d/1][
+                    return rejoin [
+                        "Unknown section keyword '" mold d/1 "' (expected one of " mold known-keywords ")"
+                    ]
+                ]
+            ]
+            pos: next pos
+        ]
+        none
+    ]
+
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
         /local err pg msg ln i row a
     ][
+        ;--- Cheap structural pre-check (catches unknown keywords/directives) ---
+        msg: page-problem page
+        if msg [return msg]
+        ;--- Negations are consumed by merge-styles, so check the raw page for them ---
+        a: bad-negation page
+        if a [return rejoin ["unknown style negation '" mold a "'"]]
+
         ;--- Parse under try: catches runtime errors in parens etc. ---
         err: try [pg: parse-report page]
         if error? err [
@@ -273,7 +389,7 @@ parse-section: func [
             ]
         ]
         if not object? pg [
-            return "Could not parse page structure (is BODY present and a block?)"
+            return "BODY section is missing; a report needs a [BODY [...]] item"
         ]
 
         ;--- Paper clause ---
@@ -297,14 +413,23 @@ parse-section: func [
             unless all [object? sec block? sec/lines][
                 return rejoin [sec-name ": section missing or malformed"]
             ]
+            foreach a sec/args [
+                unless style-word-ok? a [
+                    return rejoin [sec-name " args: unknown style word '" mold a "'"]
+                ]
+            ]
             i: 0
             foreach ln sec/lines [
                 i: i + 1
-                if not block? ln [
-                    unless object? ln [
-                        return rejoin [sec-name " line " i ": expected a text line or keyword, got " mold ln]
-                    ]
-                    either find [header body footer] ln/type [
+                if block? ln [
+                    msg: check-line-styles sec-name i ln
+                    if msg [return msg]
+                    continue
+                ]
+                unless object? ln [
+                    return rejoin [sec-name " line " i ": expected a text line or keyword, got " mold ln]
+                ]
+                either find [header body footer] ln/type [
                         return rejoin [sec-name " line " i ": '" ln/type "' is a section keyword; sections are only allowed at the top level"]
                     ][
                         unless find [table image column pagebreak] ln/type [
@@ -342,6 +467,8 @@ parse-section: func [
                                 unless string? cap-line/1/1 [
                                     return rejoin [sec-name " line " i ": IMAGE caption value must be a string, got " mold cap-line/1/1]
                                 ]
+                                msg: check-line-styles sec-name i cap-line
+                                if msg [return msg]
                             ]
                         ]
                         column [
@@ -386,6 +513,20 @@ parse-section: func [
                                     ]
                                 ]
                             ]
+                            foreach r ln/lines [
+                                case [
+                                    block? r [
+                                        msg: check-line-styles sec-name i r
+                                        if msg [return msg]
+                                    ]
+                                    all [object? r r/type = 'image][
+                                        if all [block? r/lines not empty? r/lines][
+                                            msg: check-line-styles sec-name i r/lines/1
+                                            if msg [return msg]
+                                        ]
+                                    ]
+                                ]
+                            ]
                         ]
                         table [
                             if empty? ln/lines [
@@ -397,11 +538,14 @@ parse-section: func [
                                 unless any [block? r all [object? r r/type = 'pagebreak]] [
                                     return rejoin [sec-name " line " i ": TABLE row " row " must be a line block, got " mold r]
                                 ]
+                                if block? r [
+                                    msg: check-line-styles sec-name i r
+                                    if msg [return msg]
+                                ]
                             ]
                         ]
                         pagebreak [true] ; any args acceptable
                     ]
-                ]
             ]
         ]
         ""

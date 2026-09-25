@@ -10,6 +10,7 @@ Red [
 ; Red starts in the script's own directory (tests/); move up to the repo root
 ; so %samples/ and %assets/ resolve.
 change-dir %../
+check-root: what-dir
 
 args: any [system/options/args []]
 want-pdf?: not none? find args "--pdf"
@@ -101,6 +102,7 @@ sort samples
 check-passed: 0
 check-failed: 0
 foreach sf samples [
+    change-dir check-root   ; a failed render must not leave us in samples/
     check-res: try [check-sample sf]
     either error? check-res [
         check-failed: check-failed + 1

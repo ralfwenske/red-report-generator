@@ -1,5 +1,5 @@
 Red [
-    Title: "00 — Template"
+    Title: "000 — Template"
     Demo:  "copy me: the sample contract and the smallest report"
     Level: 1
     Needs: 'View

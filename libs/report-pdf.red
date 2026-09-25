@@ -16,9 +16,10 @@ Red [
 report-pdf: make report-styles [
     ;=== Typography (aligned with report-view for matching pagination) ===
     font-size:           12
-    font-scale:           1.0
-    line-height-offset:   6
-    line-height:         font-size + line-height-offset
+    ; PDF font sizes may be fractional. Bumped slightly above 1.0 so the PDF's
+    ; text width (and thus wrap points) matches the View, whose whole-point sizes
+    ; are 0.84 of nominal. Tune here for fine parity.
+    font-scale:           1.13
 
     ;=== PDF font numbers (order matches pdf-kit/font-names) ===
 
@@ -317,11 +318,25 @@ report-pdf: make report-styles [
 
     avg-char-width: func [
         "Average alphabet advance (px per character) for a font/size — a property of the font, not the text"
-        font-no [integer!] sz [integer!]
+        font-no [integer!] sz [number!]
         /local tw
     ][
         tw: pdf-kit/text-width font-no sz alphabet
         tw * 1.0 / (length? alphabet)
+    ]
+
+    line-measure: func [
+        "Pixel width of text under a style block (for word wrap)."
+        text [string!] styles [block!]
+        /local any-style? fno sz
+    ][
+        any-style?: any [
+            style-has styles 'b  style-has styles 'i  style-has styles 'u
+            style-has styles 'm  style-has styles 's  (style-heading styles) > 0
+        ]
+        fno: either any-style? [font-for-styles styles][regular-font]
+        sz: (heading-size style-heading styles) * font-scale
+        pdf-kit/text-width fno sz text
     ]
 
     emit-styled-text: function [
@@ -343,7 +358,7 @@ report-pdf: make report-styles [
         fg: style-fg-color styles
         fc: style-frame-color styles
         sz: heading-size style-heading styles
-        sz: to integer! sz * font-scale
+        sz: sz * font-scale
         font-no: either any-style? [font-for-styles styles][regular-font]
         ut: style-underline-type/explicit styles
 
@@ -424,7 +439,6 @@ report-pdf: make report-styles [
         page-num [integer!] total-pages [integer!]
         date-str [string!] time-str [string!] datetime-str [string!]
         /default-style def-styles [block!]
-        /skip-tokens "Don't replace tokens; deferred for later"
     ][
         if empty? line [exit]
         repeat idx length? line [
@@ -433,9 +447,7 @@ report-pdf: make report-styles [
             text: format-pair-value pair/1 styles
             if number? text [text: form text]
             align: case [idx = 1 ["L"] idx = 2 ["C"] idx = 3 ["R"] true ["L"]]
-            unless skip-tokens [
-                text: replace-tokens text page-num total-pages date-str time-str datetime-str
-            ]
+            text: replace-tokens text page-num total-pages date-str time-str datetime-str
             either all [empty? styles default-style][
                 emit-styled-text out margin-left y text col-w align def-styles
             ][
@@ -447,16 +459,23 @@ report-pdf: make report-styles [
     ;=== Header / Footer rendering ===
 
     emit-header: function [
-        "Emit header block at top of page, return updated page-y"
+        {Reserve the header height at the top of a page and return the updated page-y.
+         With /tokens the header is actually emitted, resolving <page>/<pages>; use
+         that in assemble-pdf, once total-pages is known (emitting in the first pass
+         and hex-replacing the tokens afterwards breaks right/centre alignment,
+         because the x was measured from the raw token text).}
         out [string!] hdr [object! none!] page-y [integer!]
         date-str [string!] time-str [string!] datetime-str [string!]
+        /tokens pn [integer!] tp [integer!]
     ][
         if none? hdr [return page-y]
         foreach line hdr/lines [
-            render-header-pairs/skip-tokens/default-style out page-y line 0 0 date-str time-str datetime-str ['b]
-            page-y: page-y - line-height
+            if tokens [
+                render-header-pairs/default-style out page-y line pn tp date-str time-str datetime-str ['b]
+            ]
+            page-y: page-y - line-advance line
         ]
-        emit-font out regular-font
+        if tokens [emit-font out regular-font]
         page-y
     ]
 
@@ -466,10 +485,13 @@ report-pdf: make report-styles [
         date-str [string!] time-str [string!] datetime-str [string!]
     ][
         if none? ftr [exit]
-        ftr-y: margin-bottom + (((length? ftr/lines) - 1) * line-height)
+        ; lines stack upward from margin-bottom; a heading line takes its own slot
+        h: 0
+        foreach line ftr/lines [h: h + line-advance line]
+        ftr-y: margin-bottom + h
         foreach line ftr/lines [
+            ftr-y: ftr-y - line-advance line
             render-header-pairs out ftr-y line page-num total-pages date-str time-str datetime-str
-            ftr-y: ftr-y - line-height
         ]
     ]
 
@@ -621,7 +643,7 @@ report-pdf: make report-styles [
     assemble-pdf: function [
         "Build PDF page objects from page buffers"
         pages [block!] total-pages [integer!]
-        ftr [object! none!]
+        hdr [object! none!] ftr [object! none!] usable-top [integer!]
         date-str [string!] time-str [string!] datetime-str [string!]
         /local pd-pages p page-ps
     ][
@@ -635,6 +657,7 @@ report-pdf: make report-styles [
             replace/all page-ps (pdf-kit/hex "%DATE%")   (pdf-kit/hex date-str)
             replace/all page-ps (pdf-kit/hex "%TIME%")   (pdf-kit/hex time-str)
             replace/all page-ps (pdf-kit/hex "%DATETIME%") (pdf-kit/hex datetime-str)
+            emit-header/tokens page-ps hdr usable-top date-str time-str datetime-str p total-pages
             emit-footer page-ps ftr p total-pages date-str time-str datetime-str
             append pd-pages make object! [content: page-ps]
         ]
@@ -744,9 +767,7 @@ report-pdf: make report-styles [
         ]
         usable-top: page-height - max margin-top first-line-h
         ; reserve the full footer (all its lines, incl. a leading empty line)
-        page-bottom: margin-bottom + either all [ftr ftr/lines][
-            max 0 ((length? ftr/lines) * line-height)
-        ][0]
+        page-bottom: margin-bottom + footer-height ftr
 
         date-str: form now/date
         time-str: copy/part form now/time ((length? form now/time) - 3)
@@ -1020,10 +1041,16 @@ report-pdf: make report-styles [
                 ]
             ][
                 if block? line [
-                    page-y: page-y - heading-gap line
-                    if (page-y - line-height) < page-bottom [new-page]
-                    render-pairs-line page-content line page-y
-                    page-y: page-y - line-height
+                    lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
+                    first?: true
+                    foreach l lines [
+                        if first? [page-y: page-y - heading-gap l]
+                        adv: line-advance l
+                        if (page-y - adv) < page-bottom [new-page]
+                        render-pairs-line page-content l page-y
+                        page-y: page-y - adv
+                        first?: false
+                    ]
                 ]
             ]
         ]
@@ -1031,9 +1058,10 @@ report-pdf: make report-styles [
         append pages page-content
         total-pages: length? pages
 
-        pd-pages: assemble-pdf pages total-pages ftr date-str time-str datetime-str
+        pd-pages: assemble-pdf pages total-pages hdr ftr usable-top date-str time-str datetime-str
         pdf-kit/save-pdf output pd-pages
         if browser [browse output]
+        reset-font
     ]
 ]; report-pdf
 

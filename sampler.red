@@ -13,6 +13,8 @@ Red [
 unless exists? %samples/ [
     change-dir first split-path system/options/script
 ]
+adir: first split-path system/options/script  ;on GTK with two monitors dir changes??
+
 
 ;--- discover the samples: only *.red, sorted by filename -------------------
 
@@ -51,13 +53,17 @@ demo-for: func [f [file!] /local blk hdr v out][
 select-sample: func [i [integer!]][
     either all [i i > 0][
         demo/text: demo-for files/:i
-        code/text: read files/:i
+        code/text: copy read files/:i
     ][
         demo/text: "(select a sample)"
     ]
 ]
 
 render-sample: func [i [integer!] /local f e msg nl][
+    print get-current-dir   ; do this for the weird two monitor issue
+    change-dir adir         ; where dir changes only when app on second monitor
+    print get-current-dir   ; refer to this app when filing the issue on Red-GTK
+    print []
     if all [i i > 0][
         f: files/:i
         demo/text: rejoin ["Opening " f " ..."]
@@ -78,6 +84,7 @@ render-sample: func [i [integer!] /local f e msg nl][
                 demo/text: rejoin ["Closed " f " - double-click another sample"]
             ]
         ]
+        change-dir adir ;make sure we end up back in the script directory
     ]
 ]
 
@@ -97,19 +104,15 @@ win: layout [
         on-dbl-click [render-sample list/selected]
         react [face/size/y: face/parent/size/y - 180]
     code: area 660x560 wrap font-name "Fixedsys" disabled 
-        react [
-            ;probe code/parent 
-            code/size: (code/parent/size - 280x180) 
-        ;probe code/size
-        ]
+        react [code/size: (code/parent/size - 280x180) ]
         return
     button "Quit"  [quit]
         react [face/offset/y: face/parent/size/y - 40]
     do [
         if not empty? names [
-            list/selected: 1
-            demo/text: demo-for files/1
-            code/text: read files/1
+            list/selected: 2
+            demo/text: demo-for files/2
+            code/text: read files/2
         ]
     ]
 ]

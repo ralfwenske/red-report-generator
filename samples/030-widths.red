@@ -1,5 +1,5 @@
 Red [
-    Title: "03 — Widths"
+    Title: "030 — Widths"
     Demo:  "character boxes (#Nch / N) vs literal pixels (#Npx) line up columns"
     Level: 3
     Needs: 'View

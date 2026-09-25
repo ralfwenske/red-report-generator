@@ -21,9 +21,17 @@ Red [
 report-view: make report-styles [
     ;=== Draw-specific typography ===
 
-    line-height-offset: 6
-    line-height:        font-size + line-height-offset
-    font-scale:         0.82
+    ; Familys chosen to match the PDF's Base-14 faces (metric clones on most
+    ; systems): Times New Roman / Helvetica / Courier.
+    font-face-serif: "Times New Roman"
+    font-face-sans:  "Helvetica"
+    font-face-mono:  "Courier"
+
+    ; Multiplier on every font size; sizes are rounded to whole points (GTK
+    ; renders whole-point sizes only). The View measures ~1.21x wider per point
+    ; than the PDF here, so 0.84 (base 12 -> 10) makes its widths — and thus wrap
+    ; points — line up with the PDF at the PDF's 12.
+    font-scale:         0.84
 
     ;=== Draw-specific state ===
 
@@ -63,7 +71,7 @@ report-view: make report-styles [
 
     ;=== Font management ===
 
-    make-font: func [
+    build-font: func [
         "Create font! for style combo and size (cached)"
         styles [block!] sz [integer!]
         /local name b? i? hd spec key cached fnt
@@ -72,17 +80,17 @@ report-view: make report-styles [
         i?: style-has styles 'i
         hd: style-heading styles
         if all [hd > 0 not b? not (style-has styles 'm) not i?][b?: true]
-        name: font-serif
+        name: font-face-serif
         case [
-            style-has styles 'm [name: font-fixed]
-            style-has styles 's [name: font-sans-serif]
+            style-has styles 'm [name: font-face-mono]
+            style-has styles 's [name: font-face-sans]
         ]
-        key: reduce [name sz any [b? false] any [i? false]]
+        key: reduce [name sz any [b? false] any [i? false] font-scale]
         if cached: select font-cache key [return cached]
 
         spec: copy [name: "" size: 0]
         spec/2: name
-        spec/4: to integer! sz * font-scale
+        spec/4: to integer! round sz * font-scale
         if any [b? i?] [
             append spec to set-word! "style"
             append/only spec collect [if b? [keep 'bold] if i? [keep 'italic]]
@@ -96,7 +104,7 @@ report-view: make report-styles [
         "Set current-font and update measure-face"
         styles [block!] sz [integer!]
     ][
-        current-font: make-font styles sz
+        current-font: build-font styles sz
         unless measure-face [measure-face: make face! [size: as-pair page-width page-height]]
         measure-face/font: current-font
     ]
@@ -116,6 +124,32 @@ report-view: make report-styles [
     ][
         sz: size-text/with measure-face "Hg"
         to integer! sz/y
+    ]
+
+    safe-file-stem: func [
+        "Reduce a report title to a safe single-segment file stem (no path traversal)."
+        s [string!]
+        /local r
+    ][
+        r: copy s
+        replace/all r "/" "-"
+        replace/all r (to char! 92) "-"    ; backslash
+        replace/all r ".." "-"
+        r
+    ]
+
+    line-measure: func [
+        "Pixel width of text under a style block (for word wrap)."
+        text [string!] styles [block!]
+        /local any-style? sz
+    ][
+        any-style?: any [
+            style-has styles 'b  style-has styles 'i  style-has styles 'u
+            style-has styles 'm  style-has styles 's  (style-heading styles) > 0
+        ]
+        sz: heading-size style-heading styles
+        either any-style? [set-font styles sz][set-font [] font-size]
+        measure-text text
     ]
 
     avg-char-width: func [
@@ -498,7 +532,6 @@ report-view: make report-styles [
         page-num-arg [integer!] total-pages-arg [integer!]
         date-str-arg [string!] time-str-arg [string!] datetime-str-arg [string!]
         /default-style def-styles [block!]
-        /skip-tokens "Don't replace tokens; deferred for later"
         /local nsegs idx pair styles text align
     ][
         nsegs: length? line
@@ -509,13 +542,7 @@ report-view: make report-styles [
                 text: format-pair-value pair/1 styles
                 if number? text [text: form text]
                 align: case [idx = 1 ["L"] idx = 2 ["C"] idx = 3 ["R"] true ["L"]]
-                either skip-tokens [
-                    text: replace/all copy text "%DATE%" date-str-arg
-                    text: replace/all text "%TIME%" time-str-arg
-                    text: replace/all text "%DATETIME%" datetime-str-arg
-                ][
-                    text: replace-tokens text page-num-arg total-pages-arg date-str-arg time-str-arg datetime-str-arg
-                ]
+                text: replace-tokens text page-num-arg total-pages-arg date-str-arg time-str-arg datetime-str-arg
                 either all [empty? styles default-style][
                     draw-styled-text margin-left y text col-w align def-styles
                 ][
@@ -528,17 +555,24 @@ report-view: make report-styles [
     ;=== Header / Footer rendering ===
 
     draw-header: func [
-        "Render header block at top of page, return updated y position"
+        {Reserve the header height at the top of a page and return the updated y.
+         With /tokens the header is actually drawn, resolving <page>/<pages>; use
+         that in the second pass, once total-pages is known (drawing in the first
+         pass and string-replacing the tokens afterwards breaks right/centre
+         alignment, because the x was measured from the raw token text).}
         hdr [object! none!] y-pos [integer!]
         d-str [string!] t-str [string!] dt-str [string!]
+        /tokens pn [integer!] tp [integer!]
         /local line
     ][
         if none? hdr [return y-pos]
         foreach line hdr/lines [
-            draw-header-pairs/skip-tokens/default-style y-pos line 0 0 d-str t-str dt-str ['b]
-            y-pos: y-pos - line-height
+            if tokens [
+                draw-header-pairs/default-style y-pos line pn tp d-str t-str dt-str ['b]
+            ]
+            y-pos: y-pos - line-advance line
         ]
-        set-font [] font-size
+        if tokens [set-font [] font-size]
         y-pos
     ]
 
@@ -546,13 +580,16 @@ report-view: make report-styles [
         "Render footer block at bottom of page"
         ftr [object! none!] pn [integer!] tp [integer!]
         d-str [string!] t-str [string!] dt-str [string!]
-        /local ftr-y line
+        /local ftr-y line h
     ][
         if none? ftr [exit]
-        ftr-y: margin-bottom + (((length? ftr/lines) - 1) * line-height)
+        ; lines stack upward from margin-bottom; a heading line takes its own slot
+        h: 0
+        foreach line ftr/lines [h: h + line-advance line]
+        ftr-y: margin-bottom + h
         foreach line ftr/lines [
+            ftr-y: ftr-y - line-advance line
             draw-header-pairs ftr-y line pn tp d-str t-str dt-str
-            ftr-y: ftr-y - line-height
         ]
     ]
 
@@ -743,13 +780,20 @@ report-view: make report-styles [
     ;=== Extracted content emitters ===
 
     _emit-pairs: func [
-        "Render pairs line from content"
+        "Render pairs line from content (word-wrapped to the content width)"
         line [block!]
+        /local adv lines l first?
     ][
-        page-y: page-y - heading-gap line
-        if (page-y - line-height) < page-bottom [new-page]
-        draw-pairs-line line page-y
-        page-y: page-y - line-height
+        lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
+        first?: true
+        foreach l lines [
+            if first? [page-y: page-y - heading-gap l]
+            adv: line-advance l
+            if (page-y - adv) < page-bottom [new-page]
+            draw-pairs-line l page-y
+            page-y: page-y - adv
+            first?: false
+        ]
     ]
 
     _emit-table: func [
@@ -1170,7 +1214,7 @@ report-view: make report-styles [
         ]
         usable-top: page-height - max margin-top first-line-h
         ; reserve the full footer (all its lines, incl. a leading empty line)
-        page-bottom: margin-bottom + either all [current-ftr current-ftr/lines][max 0 ((length? current-ftr/lines) * line-height)][0]
+        page-bottom: margin-bottom + footer-height current-ftr
 
         date-str: form now/date
         time-str: copy/part form now/time ((length? form now/time) - 3)
@@ -1219,9 +1263,11 @@ report-view: make report-styles [
         foreach page pages [
             pn: pn + 1
             page-draw: page
+            draw-header/tokens current-hdr usable-top date-str time-str datetime-str pn total-pages
             draw-footer current-ftr pn total-pages date-str time-str datetime-str
         ]
 
+        reset-font
         pages
     ] ; generate
 
@@ -1377,13 +1423,22 @@ report-view: make report-styles [
                 page-label: text  "" center
                 btn-next: button ">" [if current-page < length? rendered [current-page: current-page + 1 showpage]]
                 btn-last: button ">>" [current-page: length? rendered showpage]
-                btn-pdf: button "PDF" [
+                btn-pdf: button "Save PDF" [
                     dir: request-dir/title/dir rejoin ["Where to store " window-title ".pdf  ?"] %./pdf-reports/
                     if dir [
-                        file: rejoin [dir window-title ".pdf"]
+                        file: to-file rejoin [dir safe-file-stem window-title ".pdf"]
+                        replace/all file " " ""
                         report-pdf/generate page-obj to-file file 
-                        alert rejoin ["Success" newline file newline " saved !"]
+                        alert rejoin ["Success" newline file newline " saved !" newline ""]
                     ]
+                ]
+                btn-show-pdf: button "Show PDF" [
+                        file: to file! rejoin ["." safe-file-stem window-title ".pdf"]
+                        replace/all file " " ""
+                        report-pdf/generate page-obj file 
+                        browse  file
+                        wait 3
+                        delete file
                 ]
                 pad 10x0
                 fit-cb: check "Fit Width" fit-width? [

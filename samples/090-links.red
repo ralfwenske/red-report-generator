@@ -1,5 +1,5 @@
 Red [
-    Title: "09 — Links"
+    Title: "090 — Links"
     Demo:  "link-N and hint-N, with a do-popup callback (View only)"
     Level: 3
     Needs: 'View
@@ -19,6 +19,11 @@ do-popup: func [type [word!] id [word! number!] txt [string!] /local body page][
     page: compose/deep [[BODY [
         [(body) [h3]]
         ["This popup is itself a report, shown with show-popup."]
+        []
+        ["In the report dialect you simply insert 'link-N' in a style block"]
+        [{   ["Click " "this link" [link-1] " for a popup."]}  [i]]
+        ["or"]
+        [{   ["Hover " "this hint" [hint-2] " for a popup."]}  [i]]
     ]]]
     show-popup rejoin [form type " " form id] page 460x160
 ]

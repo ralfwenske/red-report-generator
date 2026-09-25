@@ -1,5 +1,5 @@
 Red [
-    Title: "05 — Table"
+    Title: "050 — Table"
     Demo:  "TABLE BOX ALT: header row, column widths/formats, page splitting"
     Level: 2
     Needs: 'View

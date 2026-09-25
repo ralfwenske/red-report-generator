@@ -3,3 +3,9 @@ TEST.red
 
 # Temporary PDFs written by tests/check.red --pdf
 check-*.pdf
+
+# Local screenshots / rendered page images
+*.png
+
+# Variants saved by sampler2 (…-mod.red)
+samples/*-mod.red

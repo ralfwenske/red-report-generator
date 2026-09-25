@@ -27,8 +27,9 @@ report-styles: context [
     ;=== Typography ===
 
     font-size:           12
-    line-height-offset:   3
-    line-height:         font-size + line-height-offset
+    line-height-factor:  1.4
+    line-height:         to integer! (font-size * line-height-factor)
+    base-styles:         copy []   ; global base font styles (see make-font)
     row-padding:          4
     cell-pad:             3
     underline-offset:     2
@@ -90,7 +91,59 @@ report-styles: context [
         size [integer!] "Font size in points"
     ][
         font-size: size
-        line-height: font-size + line-height-offset
+        line-height: to integer! (font-size * line-height-factor)
+    ]
+
+    make-font: func [
+        {Set the report's global base font: familiar style words (b i u s m h1-h3,
+         link-N, colours) and a size in points. It applies to every value; per-line
+         and per-value styles merge on top and !X drops a base style, so callers can
+         still override it locally. One call configures the View and PDF renderers
+         and the shared report-styles copy the parser reads, so calling it on either
+         renderer (report-view/make-font ... / report-pdf/make-font ...) is enough.}
+        styles [block!] sz [integer!]
+        /local lh
+    ][
+        lh: to integer! (sz * line-height-factor)
+        ; the renderer this was called on (or report-styles itself)
+        base-styles: copy styles
+        font-size: sz
+        line-height: lh
+        ; the shared copy the parser reads
+        report-styles/base-styles: copy styles
+        report-styles/font-size: sz
+        report-styles/line-height: lh
+        ; the sibling renderer, so a single call is global
+        if value? 'report-view [
+            report-view/font-size: sz
+            report-view/line-height: lh
+        ]
+        if value? 'report-pdf [
+            report-pdf/font-size: sz
+            report-pdf/line-height: lh
+        ]
+    ]
+
+    reset-font: func [
+        {Restore the default base font (serif, 12 pt) on this and sibling renderers,
+         so one report's make-font cannot leak into the next report in the process.}
+        /local d
+    ][
+        d: to integer! (12 * line-height-factor)
+        base-styles: copy []
+        font-size: 12
+        line-height: d
+        report-styles/base-styles: copy []
+        report-styles/font-size: 12
+        report-styles/line-height: d
+        if value? 'report-view [
+            report-view/font-size: 12
+            report-view/line-height: to integer! (12 * report-view/line-height-factor)
+        ]
+        if value? 'report-pdf [
+            report-pdf/font-size: 12
+            report-pdf/line-height: to integer! (12 * report-pdf/line-height-factor)
+        ]
     ]
 
     paper-format: func [
@@ -168,7 +221,7 @@ report-styles: context [
     ]
 
     ; Style words are never colors; resolve-colors stops at them (colors must be last).
-    style-words: [b i u s m h1 h2 h3 !u < > ^ blank money s1000 date time datetime]
+    style-words: [b i u s m h1 h2 h3 < > ^ blank money s1000 date time datetime shadow border wrap nowrap !u]
 
     resolve-colors: func [
         "Resolve trailing color words to tuples. Colors must be last in style block; style words are never colors."
@@ -403,8 +456,16 @@ report-styles: context [
         0
     ]
 
-    heading-size: func ["Font size for heading level (1=24, 2=18, 3=14)" hd [integer!]][
-        case [hd = 1 [24] hd = 2 [18] hd = 3 [14] true [font-size]]
+    heading-size: func [
+        "Font size for heading level, scaled from the base font size (1=2x, 2=1.5x, 3=1.17x)"
+        hd [integer!]
+    ][
+        case [
+            hd = 1 [to integer! (font-size * 2.0)]
+            hd = 2 [to integer! (font-size * 1.5)]
+            hd = 3 [to integer! (font-size * 1.1667)]
+            true   [font-size]
+        ]
     ]
 
     max-style-size: function [
@@ -433,6 +494,26 @@ report-styles: context [
     ][
         sz: max-style-size line-block
         either sz > font-size [sz - font-size + 2][0]
+    ]
+
+    line-advance: func [
+        {Vertical slot a line needs: at least line-height, but tall enough for its
+         largest heading so a following line cannot touch the heading's descenders.}
+        line-block [block!]
+    ][
+        max line-height max-style-size line-block
+    ]
+
+    footer-height: func [
+        "Total vertical space the footer block needs (sum of its per-line advances)"
+        ftr [object! none!]
+        /local h line
+    ][
+        h: 0
+        if all [ftr ftr/lines][
+            foreach line ftr/lines [h: h + line-advance line]
+        ]
+        h
     ]
 
     row-height: func [
@@ -730,6 +811,178 @@ report-styles: context [
 
     header-row-h: does [line-height + row-padding]
 
+    ;=== Word wrap =============================================================
+
+    style-box-width: func [
+        "Pixel width of a style block's width box (#Npx, #Nch, integer or float w.d), or 0 if none."
+        styles [block!]
+        /local w n
+    ][
+        w: style-width-px styles
+        if w > 0 [return w]
+        n: style-chars styles
+        either n > 0 [to integer! (n * font-size * 0.583)][0]
+    ]
+
+    nowrap?: func [
+        "True when a line's styles carry the 'nowrap' word (opt out of body wrapping)."
+        line [block!]
+        /local p
+    ][
+        foreach p line [
+            if all [block? p (length? p) >= 2 block? p/2 find p/2 'nowrap][return true]
+        ]
+        false
+    ]
+
+    char-class: func [
+        "1 = word char, 2 = space/tab, 3 = newline (hard line break)."
+        c [char!]
+    ][
+        case [
+            any [c = #"^/" c = #"^(0D)"] [3]
+            any [c = #" "  c = #"^-"]     [2]
+            true                          [1]
+        ]
+    ]
+
+    split-keep-space: func [
+        "Split a string into runs of word chars, space/tab, or newlines, preserving them."
+        s [string!]
+        /local out i n start cls
+    ][
+        out: copy []
+        i: 1
+        n: length? s
+        while [i <= n][
+            start: i
+            cls: char-class s/:i
+            while [all [i <= n (char-class s/:i) = cls]][i: i + 1]
+            append out copy/part (at s start) (i - start)
+        ]
+        out
+    ]
+
+    wrap-line: func [
+        {Split a text line (block of [value styles] pairs) into visual lines that fit
+         within avail px. Strings break at word boundaries (indentation kept on the
+         first line, long words hard-split); numbers/dates/tags and width-boxed values
+         are atomic. Explicit newlines are honoured as hard breaks (blank lines kept).
+         Each result is a block of pairs. `measure` is a function
+         [text [string!] styles [block!]] returning the pixel width.}
+        line [block!] avail [integer!] measure [function!]
+        /local out cur cw push flush pair val styles box-w tok ww bw sw buf has-word?
+               w chunks ch rem nls j k blank swidth cch cwid ti tch tw
+    ][
+        out: copy []
+        cur: copy []
+        cw: 0
+        flush: does [if not empty? cur [append/only out cur cur: copy [] cw: 0]]
+        push: func [p [block!] pw [number!]][
+            pw: to integer! pw
+            if all [not empty? cur (cw + pw) > avail][flush]
+            append/only cur p
+            cw: cw + pw
+        ]
+        foreach pair line [
+            if not all [(length? pair) >= 2 block? pair/2][continue]
+            val: pair/1
+            styles: pair/2
+            box-w: style-box-width styles
+            either string? val [
+                either box-w > 0 [
+                    push reduce [val styles] box-w
+                ][
+                    buf: copy ""
+                    bw: 0
+                    has-word?: false
+                    sw: measure " " styles
+                    foreach tok split-keep-space val [
+                        case [
+                            (char-class tok/1) = 3 [
+                                ; explicit newlines: hard break; extra newlines keep blank lines
+                                nls: 0
+                                j: 1
+                                while [j <= length? tok][
+                                    if any [tok/:j = #"^/" (all [tok/:j = #"^(0D)" j = length? tok])][nls: nls + 1]
+                                    j: j + 1
+                                ]
+                                if not empty? buf [
+                                    push reduce [copy buf styles] bw
+                                    buf: copy "" bw: 0 has-word?: false
+                                ]
+                                flush
+                                k: 2
+                                while [k <= nls][
+                                    blank: reduce [reduce [copy "" styles]]
+                                    append/only out blank
+                                    k: k + 1
+                                ]
+                            ]
+                            (char-class tok/1) = 2 [
+                                ; space/tab: keep only as indentation before the first word
+                                if not has-word? [
+                                    append buf tok
+                                    bw: bw + measure tok styles
+                                ]
+                            ]
+                            true [
+                                ww: measure tok styles
+                                ; wrap against the width still free on the current line
+                                rem: max 1 (avail - cw)
+                                if all [has-word? ((bw + sw + ww) > rem)][
+                                    push reduce [copy buf styles] bw
+                                    buf: copy "" bw: 0 has-word?: false
+                                    rem: max 1 (avail - cw)
+                                ]
+                                if ww > rem [
+                                    ; a word wider than the remaining width: hard-split it
+                                    if not empty? buf [
+                                        push reduce [copy buf styles] bw
+                                        buf: copy "" bw: 0 has-word?: false
+                                    ]
+                                    swidth: max 1 (avail - cw)
+                                    chunks: copy []
+                                    cch: copy ""
+                                    cwid: 0
+                                    ti: 1
+                                    while [ti <= length? tok][
+                                        tch: copy/part (at tok ti) 1
+                                        tw: measure tch styles
+                                        if all [(not empty? cch) ((cwid + tw) > swidth)][
+                                            append chunks cch
+                                            cch: copy ""
+                                            cwid: 0
+                                        ]
+                                        append cch tch
+                                        cwid: cwid + tw
+                                        ti: ti + 1
+                                    ]
+                                    if not empty? cch [append chunks cch]
+                                    foreach ch chunks [
+                                        unless empty? ch [push reduce [ch styles] (measure ch styles)]
+                                    ]
+                                    has-word?: false
+                                    continue
+                                ]
+                                if has-word? [append buf " " bw: bw + sw]
+                                append buf tok
+                                bw: bw + ww
+                                has-word?: true
+                            ]
+                        ]
+                    ]
+                    if not empty? buf [push reduce [copy buf styles] bw]
+                ]
+            ][
+                w: either box-w > 0 [box-w][measure (format-pair-value val styles) styles]
+                push reduce [val styles] w
+            ]
+        ]
+        flush
+        either empty? out [reduce [line]][out]
+    ]
+
     ;=== Pair formatting helper ===
 
     format-pair-value: function [
@@ -740,8 +993,9 @@ report-styles: context [
             none? val   [""]
             string? val [
                 ; <now> is replaced with the current date/time, per the style block
+                ; (copy: never mutate the parsed report data, it may be rendered again)
                 if find val "<now>" [
-                    val: replace/all val "<now>" (
+                    val: replace/all copy val "<now>" (
                         case [
                             find styles 'date     [format-date-value now 'date]
                             find styles 'time     [format-date-value now 'time]

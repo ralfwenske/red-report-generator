@@ -1,5 +1,5 @@
 Red [
-    Title: "07 — Image"
+    Title: "070 — Image"
     Demo:  "IMAGE: width argument, caption, shadow/border and links"
     Level: 3
     Needs: 'View

@@ -1,5 +1,5 @@
 Red [
-    Title: "06 — Column"
+    Title: "060 — Column"
     Demo:  "COLUMN auto vs ch/px, with rows built from a variable"
     Level: 3
     Needs: 'View

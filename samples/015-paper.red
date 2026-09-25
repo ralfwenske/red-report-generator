@@ -1,5 +1,5 @@
 Red [
-    Title: "08 — Paper"
+    Title: "015 — Paper"
     Demo:  "paper size, orientation and margins come from the page clause"
     Level: 2
     Needs: 'View
@@ -12,13 +12,20 @@ Red [
 
 report: [
     landscape a5 margin-20
+    [HEADER [
+        ["ACME Corp" [h1 red] "Quarterly Report" [h2]]
+        ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]
+    ]]
     [BODY [
         ["Landscape A5, 20 pt margins" [h2]]
         ["The paper clause comes first, before the items."]
         ["Try portrait, letter, or an explicit 600x800 pair."]
     ]]
+    [FOOTER [
+        ["Confidential" [b] "" "Page <page> of <pages>" [b]]
+    ]]
 ]
 
 #include %../libs/report-view.red
 
-show-report/fit-width report "08 — Paper"
+show-report report "15 — Paper"

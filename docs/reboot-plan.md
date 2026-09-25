@@ -284,6 +284,59 @@ Sketch of the first three (content only, to be written during implementation):
   renderers now honour the argument (caption `#Npx`/`#Nch` remains as a fallback).
   `libs/report-styles.red`, `libs/report-view.red` and `libs/report-pdf.red` changed
   for this.
+- **Global base font** — `make-font styles size` (e.g. `report-view/make-font [m] 8`)
+  sets the report's base font: style words plus a size. It is defined in
+  `report-styles` (so both renderers inherit it), applies as the outermost style
+  layer in `parse-report`, keeps `report-styles` in sync for the parser, and
+  recomputes `line-height`. Headings now scale from the base size (2× / 1.5× /
+  1.17×, preserving 24/18/14 at the 12 pt default). The old internal font builder
+  was renamed `build-font`; the parser injects `report-styles/base-styles`.
+  `make-font` now configures the View, the PDF and `report-styles` in one call, so
+  a single call before rendering keeps column widths and pagination consistent
+  (previously the PDF kept its default size and could fit fewer columns). The PDF
+  uses Base-14 fonts only (mono = Courier) and its own `font-scale` (`1.13` vs the
+  View's `0.84`). The View's families were aligned to the PDF's base-14 metric
+  clones (`Times New Roman` / `Helvetica` / `Courier`) and its sizes are rounded to
+  whole points (GTK renders whole-point sizes only; fractional sizes collapsed the
+  heading/body distinction). The View renders ~1.3× wider per point than the PDF, so
+  the coarse parity setting is View `0.84` (base 12 → 10) and the fine compensation
+  is `report-pdf/font-scale` `1.13` (PDF sizes may be fractional) — the two now fit
+  the same characters per line.
+- **Rendering no longer mutates the parsed report** — `format-pair-value` expanded
+  `<now>` with an in-place `replace/all`, so the first render rewrote the parsed
+  string. Rendering the same page-obj again (View then PDF, or two PDFs) then
+  measured/rendered the date-expanded text: a 62-char line became 74 chars, which
+  silently dropped a `COLUMN` from two columns to one at 10 pt. Fixed by copying
+  before replacing (`replace/all copy val …`).
+- **Validation is the single gate** — `parse-report` is now side-effect free (it no
+  longer `print`s "Failed to parse page structure"); `validate-report` does a cheap
+  structural pre-scan of the raw page (unknown section keyword, bare word, bad paper
+  directive, unknown style word/lit-word, unknown `!X` negation) plus the existing
+  per-section checks, and reports the first problem as a message. `show-report`
+  already calls it first, so invalid input is reported instead of printing to the
+  console; the parser can assume validated input.
+- **Word wrapping** — BODY text lines wrap to the content width by default (long string
+  values break at spaces, keeping their style; numbers/width-boxed segments are atomic;
+  long single words are hard-split; `nowrap` opts a line out). **Explicit newlines in a
+  string are honoured as hard breaks** (so a multi-line `{...}` value renders as
+  separate lines — previously the View drew them as one command and only advanced one
+  line height, overlapping). It is done in each renderer via a shared
+  `report-styles/wrap-line` taking a measure callback (`report-view/line-measure` with
+  `measure-text`, `report-pdf/line-measure` with `pdf-kit/text-width`), because the
+  available width is the page/popup width (known only to the renderer — `show-popup`
+  sets it on the viewer) and accurate breaks need real font metrics.
+- **Line spacing** — replaced the additive `line-height-offset` with a
+  multiplicative `line-height-factor` (default `1.4`): `line-height =
+  to integer! (font-size * line-height-factor)`. A factor scales with the font,
+  where the old `+6` gave too much leading at small sizes and too little at large
+  ones. `1.5` reproduces the previous 12 pt → 18 px spacing. (`report-styles` had
+  an inconsistent `+3`; both renderers now inherit the factor.)
+- **Heading line height** — a line's vertical slot is now
+  `max(line-height, largest heading size)` via `report-styles/line-advance`, used
+  by the header, footer and body in both renderers (and `footer-height` reserves
+  the footer's real height). Previously a 24 pt `h1` line advanced by `line-height`
+  only (16–18 px), so the next line touched its descenders — visible in a header
+  like `["ACME Corp" [h1 !m red] …]`. The factor alone could not fix this.
 
 So `libs/` is no longer byte-identical to the predecessor: `report-styles.red`,
 `report-view.red` and `report-pdf.red` carry the fixes above.

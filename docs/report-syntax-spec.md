@@ -27,7 +27,7 @@ Design goals of the dialect:
 1. **Declarative and compact** — a report page is data, not code.
 2. **Single source of truth** — one page description drives both renderers.
 3. **No collision with Red syntax** — reserved keyword words (`HEADER`, `TABLE`, …) are bare words in a block, or unambiguous tokens.
-4. **Styles are per-value** — every value on a line carries its own optional style block; there are no line-wide styles.
+4. **Styles are per-value** — every value on a line carries its own optional style block; an optional first block contains line-wide styles.
 
 ## 2. Notation
 
@@ -353,6 +353,25 @@ The handler signature is `func [type [word!] id [word! number!] text [string!]]`
 so a `[lit-word!]` parameter rejects them).
 The **PDF renderer silently drops** links and hints (§13).
 
+### 5.7 Word wrapping (BODY text lines)
+
+BODY text lines wrap automatically at the content width
+(`page width − left/right margins`). A **long string value** is broken at spaces into
+several visual lines, each keeping the value's style; indentation (leading spaces) is
+kept on the first line and long single words are hard-split. Other values (numbers,
+dates, `<now>` etc.) and width-boxed segments are **atomic** — they move whole to the
+next line if they do not fit, and a single value cannot be split.
+
+- Wrapping is done by each renderer with **real font metrics**, so it fits the actual
+  page (and the View's/PDF's own font size/scale). The View and PDF may therefore
+  break at slightly different points — each fits its own page.
+- **Explicit newlines** in a string value are honoured as hard line breaks (a multi-line
+  `{...}` string renders as separate lines, each advanced by the line height).
+- Only top-level BODY text lines wrap; tables, columns, images, header and footer are
+  unaffected.
+- `nowrap` (as a line/value style) disables wrapping for that line; `wrap` is accepted
+  as an explicit no-op. Example: `["a long sentence …" [h3 nowrap]]`.
+
 ## 6. Tables — column specification
 
 The header row's style blocks configure each column:
@@ -466,8 +485,23 @@ word is parsed as a keyword item — is documented in §4.
 ### 11.4 Validation
 
 `validate-report` returns `""` when the description is valid, else a message naming
-the first problem (unknown keyword, malformed `IMAGE`/`COLUMN`/`TABLE`, bad width
-tags, non-block table rows, …). The demo reports all pass validation (verified).
+the first problem. It is the single gate: `parse-report` assumes validated input and
+is side-effect free (it no longer prints); anything invalid should be reported here
+first. Checks include:
+
+- unknown section keywords (`BODYX`), bare words between items, and bad paper
+  directives (`a9`) — reported before parsing;
+- a missing `BODY` (`BODY section is missing; a report needs a [BODY [...]] item`);
+- unknown style words/lit-words in a style block — decorations/families/headings
+  (`b i u s m h1-h3`), formats (`money s1000 date time datetime blank`), alignment
+  (`< > ^`), `shadow`/`border`, `link-N`/`hint-N`, `!X` negations, widths
+  (integers/floats, `#Npx`/`#Nch`) and colour words/tuples are allowed; anything
+  else (`nosuchstyle`, `ok?`) is an error. Unknown negations (`!wibble`) are also
+  caught, even though `merge-styles` would otherwise drop them;
+- malformed `IMAGE`/`COLUMN`/`TABLE`, bad width tags, non-block table rows, sections
+  nested inside sections, etc.
+
+The demo reports all pass validation (verified).
 
 ## 12. Application interface
 
@@ -481,7 +515,39 @@ show-report/fit-width report title                ; start in fit-width mode
 show-report/popup report title popup-fn           ; pass a click/hover callback
 show-report/popup/fit-width report title popup-fn ; callback + fit-width
 show-popup title content win-size                 ; modal styled popup (reuses the dialect)
+
+report-view/make-font styles size                 ; set the global base font (View)
+report-pdf/make-font styles size                  ; set the global base font (PDF)
 ```
+
+`make-font` sets the report's **global base font**: familiar style words
+(`b i u s m h1-h3`, `link-N`, colours — see §5.2) plus a size in points, e.g.
+`report-view/make-font [m] 8`. It applies to every value; per-line and per-value
+styles merge on top, and `!X` drops a base style, so any value can still override
+it locally (`[!m s]` = sans where the base is mono). Headings scale with the base
+size (`h1` = 2×, `h2` = 1.5×, `h3` = 1.17×; the 12 pt default gives 24/18/14 as
+before). Line spacing is **`line-height-factor × size`** (default `1.4`), so it
+scales with the font instead of adding a fixed leading; tune it with
+`report-view/line-height-factor` (e.g. `1.5` restores the old 12 pt → 18 px
+spacing) — set the factor *before* `make-font`, which recomputes `line-height`.
+A line containing a heading reserves **its own height** (`max(line-height,
+heading-size)`), so a following line can never touch the heading's descenders
+(header, footer and body alike). One call configures the View **and** PDF
+renderers plus the shared `report-styles` copy the parser reads, so calling it on
+either renderer (`report-view/make-font …` or `report-pdf/make-font …`) is
+enough — that keeps column widths and pagination consistent across both.
+
+Two renderer-specific notes. The PDF uses the **Base-14** fonts only
+(Times/Helvetica/Courier; no embedded fonts), and the View is set to matching
+metric-compatible faces (`font-face-serif` `Times New Roman`, `font-face-sans`
+`Helvetica`, `font-face-mono` `Courier`). The View renders ~1.3× wider per point
+than the PDF here, so its `font-scale` is `0.84` (base 12 → 10) with sizes rounded
+to **whole points** (GTK renders whole-point sizes only; fractional sizes collapsed
+the heading/body distinction). Because that leaves a coarse step, the fine
+compensation lives on the PDF, whose sizes may be **fractional**: `report-pdf/font-scale`
+is `1.13`, so its text width — and therefore its wrap points — matches the View (both
+fit the same characters per line). Tune `report-view/font-scale` (coarse) and
+`report-pdf/font-scale` (fine) for parity.
 
 `show-report` runs `validate-report` on the description first. It opens a window
 only when the report is valid and then returns `""` (after the window is closed);
