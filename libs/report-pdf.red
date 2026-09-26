@@ -16,10 +16,11 @@ Red [
 report-pdf: make report-styles [
     ;=== Typography (aligned with report-view for matching pagination) ===
     font-size:           12
-    ; PDF font sizes may be fractional. Bumped slightly above 1.0 so the PDF's
-    ; text width (and thus wrap points) matches the View, whose whole-point sizes
-    ; are 0.84 of nominal. Tune here for fine parity.
-    font-scale:           1.13
+    ; Per-family multipliers; PDF sizes may be fractional, so this is the fine
+    ; parity knob against the View's whole-point serif/sans/mono sizes.
+    font-scale-serif:     1.1312
+    font-scale-sans:      1.125
+    font-scale-mono:      1.121
 
     ;=== PDF font numbers (order matches pdf-kit/font-names) ===
 
@@ -325,6 +326,17 @@ report-pdf: make report-styles [
         tw * 1.0 / (length? alphabet)
     ]
 
+    font-scale-for: func [
+        "Per-family size multiplier for a style block (mono > sans > serif)."
+        styles [block!]
+    ][
+        case [
+            style-has styles 'm [font-scale-mono]
+            style-has styles 's [font-scale-sans]
+            true               [font-scale-serif]
+        ]
+    ]
+
     line-measure: func [
         "Pixel width of text under a style block (for word wrap)."
         text [string!] styles [block!]
@@ -335,7 +347,7 @@ report-pdf: make report-styles [
             style-has styles 'm  style-has styles 's  (style-heading styles) > 0
         ]
         fno: either any-style? [font-for-styles styles][regular-font]
-        sz: (heading-size style-heading styles) * font-scale
+        sz: (heading-size style-heading styles) * font-scale-for styles
         pdf-kit/text-width fno sz text
     ]
 
@@ -358,7 +370,7 @@ report-pdf: make report-styles [
         fg: style-fg-color styles
         fc: style-frame-color styles
         sz: heading-size style-heading styles
-        sz: sz * font-scale
+        sz: sz * font-scale-for styles
         font-no: either any-style? [font-for-styles styles][regular-font]
         ut: style-underline-type/explicit styles
 

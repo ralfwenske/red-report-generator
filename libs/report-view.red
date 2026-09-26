@@ -27,11 +27,13 @@ report-view: make report-styles [
     font-face-sans:  "Helvetica"
     font-face-mono:  "Courier"
 
-    ; Multiplier on every font size; sizes are rounded to whole points (GTK
-    ; renders whole-point sizes only). The View measures ~1.21x wider per point
-    ; than the PDF here, so 0.84 (base 12 -> 10) makes its widths — and thus wrap
-    ; points — line up with the PDF at the PDF's 12.
-    font-scale:         0.84
+    ; Per-family multipliers on every font size; sizes are rounded to whole
+    ; points (GTK renders whole-point sizes only). The View measures ~1.3x wider
+    ; per point than the PDF and the three faces differ slightly, so each family
+    ; is tuned separately to match the PDF's serif/sans/mono.
+    font-scale-serif:   0.84
+    font-scale-sans:    0.84
+    font-scale-mono:    0.84
 
     ;=== Draw-specific state ===
 
@@ -74,23 +76,24 @@ report-view: make report-styles [
     build-font: func [
         "Create font! for style combo and size (cached)"
         styles [block!] sz [integer!]
-        /local name b? i? hd spec key cached fnt
+        /local name b? i? hd spec key cached fnt scale
     ][
         b?: style-has styles 'b
         i?: style-has styles 'i
         hd: style-heading styles
         if all [hd > 0 not b? not (style-has styles 'm) not i?][b?: true]
         name: font-face-serif
+        scale: font-scale-serif
         case [
-            style-has styles 'm [name: font-face-mono]
-            style-has styles 's [name: font-face-sans]
+            style-has styles 'm [name: font-face-mono  scale: font-scale-mono]
+            style-has styles 's [name: font-face-sans  scale: font-scale-sans]
         ]
-        key: reduce [name sz any [b? false] any [i? false] font-scale]
+        key: reduce [name sz any [b? false] any [i? false] scale]
         if cached: select font-cache key [return cached]
 
         spec: copy [name: "" size: 0]
         spec/2: name
-        spec/4: to integer! round sz * font-scale
+        spec/4: to integer! round sz * scale
         if any [b? i?] [
             append spec to set-word! "style"
             append/only spec collect [if b? [keep 'bold] if i? [keep 'italic]]

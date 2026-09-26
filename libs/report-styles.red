@@ -871,8 +871,8 @@ report-styles: context [
          Each result is a block of pairs. `measure` is a function
          [text [string!] styles [block!]] returning the pixel width.}
         line [block!] avail [integer!] measure [function!]
-        /local out cur cw push flush pair val styles box-w tok ww bw sw buf has-word?
-               w chunks ch rem nls j k blank swidth cch cwid ti tch tw
+        /local out cur cw push flush pair val styles box-w tok ww bw sw buf str-start?
+               w chunks ch nls j k blank swidth cch cwid ti tch tw lead room
     ][
         out: copy []
         cur: copy []
@@ -895,7 +895,7 @@ report-styles: context [
                 ][
                     buf: copy ""
                     bw: 0
-                    has-word?: false
+                    str-start?: true
                     sw: measure " " styles
                     foreach tok split-keep-space val [
                         case [
@@ -909,7 +909,7 @@ report-styles: context [
                                 ]
                                 if not empty? buf [
                                     push reduce [copy buf styles] bw
-                                    buf: copy "" bw: 0 has-word?: false
+                                    buf: copy "" bw: 0
                                 ]
                                 flush
                                 k: 2
@@ -918,30 +918,41 @@ report-styles: context [
                                     append/only out blank
                                     k: k + 1
                                 ]
+                                str-start?: true
                             ]
                             (char-class tok/1) = 2 [
-                                ; space/tab: keep only as indentation before the first word
-                                if not has-word? [
+                                ; space/tab: keep only as indentation at the very start
+                                if all [str-start? empty? buf][
                                     append buf tok
                                     bw: bw + measure tok styles
                                 ]
                             ]
                             true [
                                 ww: measure tok styles
-                                ; wrap against the width still free on the current line
-                                rem: max 1 (avail - cw)
-                                if all [has-word? ((bw + sw + ww) > rem)][
+                                lead: either str-start? [0][sw]
+                                room: max 1 (avail - cw)
+                                if all [(not empty? buf) ((bw + lead + ww) > room)][
+                                    ; buffered words + this word do not fit: emit the buffer
+                                    ; and end the line (the break replaces the space)
                                     push reduce [copy buf styles] bw
-                                    buf: copy "" bw: 0 has-word?: false
-                                    rem: max 1 (avail - cw)
+                                    buf: copy "" bw: 0
+                                    flush
+                                    lead: 0
+                                    room: max 1 (avail - cw)
                                 ]
-                                if ww > rem [
-                                    ; a word wider than the remaining width: hard-split it
+                                if all [(not empty? cur) ((lead + ww) > room)][
+                                    ; no room left on a non-empty line: start a new one
+                                    flush
+                                    lead: 0
+                                    room: max 1 (avail - cw)
+                                ]
+                                if (lead + ww) > room [
+                                    ; wider than a whole line: hard-split it
                                     if not empty? buf [
                                         push reduce [copy buf styles] bw
-                                        buf: copy "" bw: 0 has-word?: false
+                                        buf: copy "" bw: 0
                                     ]
-                                    swidth: max 1 (avail - cw)
+                                    swidth: room
                                     chunks: copy []
                                     cch: copy ""
                                     cwid: 0
@@ -962,13 +973,13 @@ report-styles: context [
                                     foreach ch chunks [
                                         unless empty? ch [push reduce [ch styles] (measure ch styles)]
                                     ]
-                                    has-word?: false
+                                    str-start?: false
                                     continue
                                 ]
-                                if has-word? [append buf " " bw: bw + sw]
+                                if lead > 0 [append buf " " bw: bw + lead]
                                 append buf tok
                                 bw: bw + ww
-                                has-word?: true
+                                str-start?: false
                             ]
                         ]
                     ]

@@ -4,6 +4,7 @@ Red [
     Level: 2
     Needs: 'View
 ]
+
 code: read/lines %code-viewer.red
 bdy: [ []]
 
@@ -25,11 +26,11 @@ foreach line code [
             ]
         ]
     ]
-    append/only bdy/1 compose [(line) [b]]
+    append/only bdy/1 compose [(line)]
 ]
 
 report: compose/deep [
-    margin-10 a4 landscape
+    margin-10 920x700 ;a4 landscape
     [HEADER [
         ["Red Report" [h1 !m red] "Self Reflection" [h2]]
         ["Prepared <now>" [i] "" "<page> of <pages>" [b]]
@@ -65,6 +66,6 @@ do-popup: function [
     show-popup rejoin [type " " id] rpt 280x70 
 ]
 
-#include %libs/report-view.red
-report-view/make-font [m] 9
+#include %../libs/report-view.red
+report-view/make-font [s] 11
 show-report/popup report "code-viewer" :do-popup

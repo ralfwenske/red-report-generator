@@ -541,13 +541,14 @@ Two renderer-specific notes. The PDF uses the **Base-14** fonts only
 (Times/Helvetica/Courier; no embedded fonts), and the View is set to matching
 metric-compatible faces (`font-face-serif` `Times New Roman`, `font-face-sans`
 `Helvetica`, `font-face-mono` `Courier`). The View renders ~1.3× wider per point
-than the PDF here, so its `font-scale` is `0.84` (base 12 → 10) with sizes rounded
-to **whole points** (GTK renders whole-point sizes only; fractional sizes collapsed
-the heading/body distinction). Because that leaves a coarse step, the fine
-compensation lives on the PDF, whose sizes may be **fractional**: `report-pdf/font-scale`
-is `1.13`, so its text width — and therefore its wrap points — matches the View (both
-fit the same characters per line). Tune `report-view/font-scale` (coarse) and
-`report-pdf/font-scale` (fine) for parity.
+than the PDF and the three faces differ slightly, so the parity scale is set
+**per family**: View `font-scale-serif` / `font-scale-sans` / `font-scale-mono`
+(default `0.84`, base 12 → 10, rounded to whole points — GTK renders whole-point
+sizes only) and PDF `font-scale-serif` / `font-scale-sans` / `font-scale-mono`
+(default `1.13`, fractional is allowed). This lets each of the three fonts match
+the PDF's separately; tune the six numbers for closest parity. Serif and sans-serif
+glyph widths vary, so they cannot match exactly — **for the closest View/PDF match
+use the mono family (`m`)**, whose fixed advance makes widths and line breaks line up.
 
 `show-report` runs `validate-report` on the description first. It opens a window
 only when the report is valid and then returns `""` (after the window is closed);

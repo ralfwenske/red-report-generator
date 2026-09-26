@@ -5,7 +5,9 @@ Red [
                    red tests/check.red --pdf     also render each sample to a temp PDF}
 ]
 
-#include %../libs/report-parser.red
+; report-view pulls in report-parser (and report-pdf); loading it also makes
+; report-view/make-font available to samples that set a base font.
+#include %../libs/report-view.red
 
 ; Red starts in the script's own directory (tests/); move up to the repo root
 ; so %samples/ and %assets/ resolve.
@@ -14,7 +16,6 @@ check-root: what-dir
 
 args: any [system/options/args []]
 want-pdf?: not none? find args "--pdf"
-if want-pdf? [do %libs/report-pdf.red]
 
 ;--- helpers ----------------------------------------------------------------
 
@@ -42,9 +43,14 @@ show-report: func [
 
 ;--- one sample -------------------------------------------------------------
 
-check-sample: func [f [file!] /local path blk start idx prefix e msg pg out skip-next here][
+check-sample: func [f [file!] /local path blk start idx prefix e msg pg out skip-next][
     path: to-file rejoin ["samples/" f]
     blk: load path
+
+    ; evaluate the sample from its own directory, as it is run normally, so its
+    ; relative reads (own source, %assets/... data) resolve. The caller restores
+    ; the repo root before the next sample.
+    change-dir first split-path clean-path path
 
     ; skip the optional "Red [...]" header
     start: 1
@@ -78,12 +84,8 @@ check-sample: func [f [file!] /local path blk start idx prefix e msg pg out skip
     msg: validate-report captured-report
     if all ["" = msg want-pdf?][
         pg: parse-report captured-report
-        out: clean-path to-file rejoin [%./ "check-" (replace form f ".red" ".pdf")]
-        ; sample-relative data paths (%../assets/...) resolve from samples/
-        here: what-dir
-        change-dir first split-path clean-path path
+        out: clean-path to-file rejoin [check-root "check-" (replace form f ".red" ".pdf")]
         report-pdf/generate pg out
-        change-dir here
         delete out
     ]
     msg

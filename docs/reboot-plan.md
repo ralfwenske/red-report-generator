@@ -294,14 +294,14 @@ Sketch of the first three (content only, to be written during implementation):
   `make-font` now configures the View, the PDF and `report-styles` in one call, so
   a single call before rendering keeps column widths and pagination consistent
   (previously the PDF kept its default size and could fit fewer columns). The PDF
-  uses Base-14 fonts only (mono = Courier) and its own `font-scale` (`1.13` vs the
-  View's `0.84`). The View's families were aligned to the PDF's base-14 metric
-  clones (`Times New Roman` / `Helvetica` / `Courier`) and its sizes are rounded to
-  whole points (GTK renders whole-point sizes only; fractional sizes collapsed the
-  heading/body distinction). The View renders ~1.3× wider per point than the PDF, so
-  the coarse parity setting is View `0.84` (base 12 → 10) and the fine compensation
-  is `report-pdf/font-scale` `1.13` (PDF sizes may be fractional) — the two now fit
-  the same characters per line.
+  uses Base-14 fonts only (mono = Courier). The View's families were aligned to the
+  PDF's base-14 metric clones (`Times New Roman` / `Helvetica` / `Courier`) and its
+  sizes are rounded to whole points (GTK renders whole-point sizes only; fractional
+  sizes collapsed the heading/body distinction). Because the View renders ~1.3×
+  wider per point and the three faces differ slightly, the parity scale is set
+  **per family**: View `font-scale-serif/-sans/-mono` (default `0.84`) and PDF
+  `font-scale-serif/-sans/-mono` (default `1.13`, fractional). Six numbers to tune
+  for closest serif/sans/mono parity.
 - **Rendering no longer mutates the parsed report** — `format-pair-value` expanded
   `<now>` with an in-place `replace/all`, so the first render rewrote the parsed
   string. Rendering the same page-obj again (View then PDF, or two PDFs) then
