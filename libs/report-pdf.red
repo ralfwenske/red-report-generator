@@ -767,6 +767,10 @@ report-pdf: make report-styles [
         set in self 'margin-top    max any [page-obj/margin/top    50] edge-pad
         set in self 'margin-bottom max any [page-obj/margin/bottom 50] edge-pad
 
+        ; line spacing = base size x factor (per-renderer factor; the font scales
+        ; already match the glyph sizes, so scaling here would double-count)
+        set in self 'line-height max 1 to integer! (font-size * line-height-factor)
+
         first-line: either all [hdr not empty? hdr/lines][hdr/lines/1][
             either all [ctn not empty? ctn/lines][
                 either block? ctn/lines/1 [ctn/lines/1][none]

@@ -27,7 +27,7 @@ report-styles: context [
     ;=== Typography ===
 
     font-size:           12
-    line-height-factor:  1.4
+    line-height-factor:  1.6
     line-height:         to integer! (font-size * line-height-factor)
     base-styles:         copy []   ; global base font styles (see make-font)
     row-padding:          4
@@ -100,10 +100,19 @@ report-styles: context [
          and per-value styles merge on top and !X drops a base style, so callers can
          still override it locally. One call configures the View and PDF renderers
          and the shared report-styles copy the parser reads, so calling it on either
-         renderer (report-view/make-font ... / report-pdf/make-font ...) is enough.}
+         renderer (report-view/make-font ... / report-pdf/make-font ...) is enough.
+         /line sets the line-spacing factor (line height = rendered base size x
+         factor) in the same call, e.g. report-view/make-font/line [m] 11 1.6.}
         styles [block!] sz [integer!]
+        /line factor [number!]
         /local lh
     ][
+        if line [
+            line-height-factor: factor
+            report-styles/line-height-factor: factor
+            if value? 'report-view [report-view/line-height-factor: factor]
+            if value? 'report-pdf  [report-pdf/line-height-factor: factor]
+        ]
         lh: to integer! (sz * line-height-factor)
         ; the renderer this was called on (or report-styles itself)
         base-styles: copy styles

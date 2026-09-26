@@ -1201,6 +1201,10 @@ report-view: make report-styles [
         margin-top:    max any [page-obj/margin/top    50] edge-pad
         margin-bottom: max any [page-obj/margin/bottom 50] edge-pad
 
+        ; line spacing = base size x factor (per-renderer factor; the font scales
+        ; already match the glyph sizes, so scaling here would double-count)
+        line-height: max 1 to integer! (font-size * line-height-factor)
+
         ; Clear font cache for fresh report generation
         font-cache: make map! []
 

@@ -521,6 +521,8 @@ show-popup title content win-size                 ; modal styled popup (reuses t
 
 report-view/make-font styles size                 ; set the global base font (View)
 report-pdf/make-font styles size                  ; set the global base font (PDF)
+report-view/make-font/line styles size factor     ; … and the line-spacing factor
+report-pdf/make-font/line styles size factor
 ```
 
 `make-font` sets the report's **global base font**: familiar style words
@@ -529,10 +531,10 @@ report-pdf/make-font styles size                  ; set the global base font (PD
 styles merge on top, and `!X` drops a base style, so any value can still override
 it locally (`[!m s]` = sans where the base is mono). Headings scale with the base
 size (`h1` = 2×, `h2` = 1.5×, `h3` = 1.17×; the 12 pt default gives 24/18/14 as
-before). Line spacing is **`line-height-factor × size`** (default `1.4`), so it
-scales with the font instead of adding a fixed leading; tune it with
-`report-view/line-height-factor` (e.g. `1.5` restores the old 12 pt → 18 px
-spacing) — set the factor *before* `make-font`, which recomputes `line-height`.
+before). Line spacing is **`line-height-factor × base size`** (default `1.6`),
+measured per renderer, so the two renderers keep the same pitch; tune each
+independently with `report-view/line-height-factor` / `report-pdf/line-height-factor`,
+or in the same call as the font: `report-view/make-font/line [m] 11 1.6`.
 A line containing a heading reserves **its own height** (`max(line-height,
 heading-size)`), so a following line can never touch the heading's descenders
 (header, footer and body alike). One call configures the View **and** PDF
