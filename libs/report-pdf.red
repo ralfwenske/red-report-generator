@@ -18,9 +18,9 @@ report-pdf: make report-styles [
     font-size:           12
     ; Per-family multipliers; PDF sizes may be fractional, so this is the fine
     ; parity knob against the View's whole-point serif/sans/mono sizes.
-    font-scale-serif:     1.1312
-    font-scale-sans:      1.125
-    font-scale-mono:      1.121
+    font-scale-serif:   1.32 ;  1.1312 / 0.84
+    font-scale-sans:    1.38 ;  1.125 / 0.84
+    font-scale-mono:    1.4 ;  1.131 / 0.84
 
     ;=== PDF font numbers (order matches pdf-kit/font-names) ===
 
@@ -767,17 +767,20 @@ report-pdf: make report-styles [
         set in self 'margin-top    max any [page-obj/margin/top    50] edge-pad
         set in self 'margin-bottom max any [page-obj/margin/bottom 50] edge-pad
 
-        first-line-h: line-height
         first-line: either all [hdr not empty? hdr/lines][hdr/lines/1][
             either all [ctn not empty? ctn/lines][
                 either block? ctn/lines/1 [ctn/lines/1][none]
             ][none]
         ]
+        ; place the top of the first line at margin-top: reserve its glyph ascent
+        ascent: to integer! (font-size * 0.72)
         if first-line [
             first-sz: max-style-size first-line
-            first-line-h: max line-height (first-sz + edge-pad)
+            first-styles: either all [block? first-line not empty? first-line block? first-line/1/2][first-line/1/2][copy []]
+            first-scale: font-scale-for first-styles
+            ascent: to integer! (first-sz * first-scale * 0.72)
         ]
-        usable-top: page-height - max margin-top first-line-h
+        usable-top: page-height - margin-top - (max 1 ascent)
         ; reserve the full footer (all its lines, incl. a leading empty line)
         page-bottom: margin-bottom + footer-height ftr
 

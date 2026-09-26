@@ -66,6 +66,9 @@ section-item := [HEADER [items]]            ; optional
   A **pair** (`600x800`) sets a custom
   width×height in points; margins are in points too (`top-20`, `right-10`, `margin-25`
   sets all four). Unknown leading words are invalid (reported by `validate-report`).
+  All four margins measure from the page edge to the **top of the first line** (header
+  if present, else the first body line), so the visual top gap equals `margin-N` just
+  like the other sides.
 - Words between a section keyword and its items block are section *args*: parsed and
   stored (`pg/header/args` etc.) but **currently unused by either renderer** (§13).
 

@@ -31,9 +31,9 @@ report-view: make report-styles [
     ; points (GTK renders whole-point sizes only). The View measures ~1.3x wider
     ; per point than the PDF and the three faces differ slightly, so each family
     ; is tuned separately to match the PDF's serif/sans/mono.
-    font-scale-serif:   0.84
-    font-scale-sans:    0.84
-    font-scale-mono:    0.84
+    font-scale-serif:  1 ; 0.84
+    font-scale-sans:   1 ; 0.84
+    font-scale-mono:   1 ; 0.84
 
     ;=== Draw-specific state ===
 
@@ -1187,7 +1187,7 @@ report-view: make report-styles [
     generate: func [
         "Generate a multi-page report using draw dialect. Returns block of draw blocks."
         page-obj [object!] "Parsed page from parse-report"
-        /local first-line-h first-line first-sz line paper
+        /local first-line first-sz line paper ascent
     ][
         current-hdr: page-obj/header
         current-ftr: page-obj/footer
@@ -1204,18 +1204,19 @@ report-view: make report-styles [
         ; Clear font cache for fresh report generation
         font-cache: make map! []
 
-        first-line-h: line-height
         first-line: any [
             all [current-hdr  not empty? current-hdr/lines  current-hdr/lines/1]
             all [page-obj/content  not empty? page-obj/content/lines  block? page-obj/content/lines/1  page-obj/content/lines/1]
         ]
+        ; place the top of the first line at margin-top: reserve its ascent
+        ascent: font-size + 4
         if first-line [
             first-sz: max-style-size first-line
             set-font [] first-sz
-            first-line-h: max line-height (measure-height + edge-pad)
+            ascent: current-font/size + 4
             set-font [] font-size
         ]
-        usable-top: page-height - max margin-top first-line-h
+        usable-top: page-height - margin-top - ascent
         ; reserve the full footer (all its lines, incl. a leading empty line)
         page-bottom: margin-bottom + footer-height current-ftr
 
