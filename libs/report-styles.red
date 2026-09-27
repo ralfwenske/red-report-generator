@@ -28,6 +28,9 @@ report-styles: context [
 
     font-size:           12
     line-height-factor:  1.6
+    ; spacing for lines whose largest size is above the base size (headings or
+    ; big -N sizes) — lower it if large fonts get too much leading
+    line-height-factor-large: 1.3
     line-height:         to integer! (font-size * line-height-factor)
     base-styles:         copy []   ; global base font styles (see make-font)
     row-padding:          4
@@ -230,7 +233,7 @@ report-styles: context [
     ]
 
     ; Style words are never colors; resolve-colors stops at them (colors must be last).
-    style-words: [b i u s m h1 h2 h3 < > ^ blank money s1000 date time datetime shadow border wrap nowrap !u]
+    style-words: [b i u s m ss h1 h2 h3 < > ^ blank money s1000 date time datetime shadow border wrap nowrap !u]
 
     resolve-colors: func [
         "Resolve trailing color words to tuples. Colors must be last in style block; style words are never colors."
@@ -458,9 +461,13 @@ report-styles: context [
         ]
     ]
 
-    style-heading: func ["Return heading level (1-3) from styles, or 0" styles [block!] /local s][
+    style-heading: func ["Return heading level (1-3) from styles, or 0" styles [block!] /local s ss b][
         foreach s styles [
-            if find [h1 h2 h3] s [return case [s = 'h1 [1] s = 'h2 [2] true [3]]]
+            if word? s [
+                ss: size-suffix s
+                b: either ss [ss/1][s]
+                if find [h1 h2 h3] b [return case [b = 'h1 [1] b = 'h2 [2] true [3]]]
+            ]
         ]
         0
     ]
@@ -477,50 +484,131 @@ report-styles: context [
         ]
     ]
 
-    max-style-size: function [
-        "Largest font size from style blocks in a line of pairs"
-        line-block [block!]
+    size-suffix: func [
+        "Split a sized style word like i-8 / m-10 into [base-word size]; none when there is no -N suffix."
+        w [word!]
+        /local f p n i
     ][
-        best: font-size
-        foreach pair line-block [
-            if all [block? pair (length? pair) >= 2 block? pair/2][
-                foreach s pair/2 [
-                    hd: case [s = 'h1 [1] s = 'h2 [2] s = 'h3 [3] true [0]]
-                    if hd > 0 [
-                        sz: heading-size hd
-                        if sz > best [best: sz]
-                    ]
+        f: form w
+        p: find f "-"
+        if none? p [return none]
+        n: copy skip p 1
+        if empty? n [return none]
+        i: attempt [to integer! n]
+        if none? i [return none]
+        reduce [to word! copy/part f p  i]
+    ]
+
+    family-of: func [
+        "Family of a style word: sans (ss), mono (m) or serif (s), each optionally -N sized; none if not a family word."
+        w [word!]
+        /local ss base
+    ][
+        ss: size-suffix w
+        base: either ss [form ss/1][form w]
+        case [base = "ss" ['sans] base = "m" ['mono] base = "s" ['serif] true [none]]
+    ]
+
+    style-family: func [
+        "Font family of a style block: serif (default) / sans / mono. s = serif, m = mono, ss = sans."
+        styles [block!]
+        /local fam
+    ][
+        foreach s styles [
+            if word? s [fam: family-of s  if fam [return fam]]
+        ]
+        'serif
+    ]
+
+    style-size: func [
+        {Explicit size (from a -N suffix on a style word, e.g. i-8 / s-10 / ss-12)
+         for a style block, or none. link-N / hint-N ids are not sizes.}
+        styles [block!]
+        /local ss
+    ][
+        foreach s styles [
+            if word? s [
+                ss: size-suffix s
+                if all [ss any [find style-words ss/1  not none? family-of ss/1]][
+                    return ss/2
                 ]
             ]
         ]
-        best
+        none
     ]
 
-    heading-gap: func [
-        "Extra spacing above a line with heading-sized segments"
-        line-block [block!]
+    font-size-for: func [
+        "Effective font size for a style block: explicit -N size, else the heading size, else the base size."
+        styles [block!]
         /local sz
     ][
-        sz: max-style-size line-block
-        either sz > font-size [sz - font-size + 2][0]
+        either sz: style-size styles [sz][heading-size style-heading styles]
+    ]
+
+    style-nondefault-font?: func [
+        "True when a style block needs a non-default font (family, heading or explicit size)."
+        styles [block!]
+    ][
+        not none? any [
+            (style-family styles) <> 'serif
+            (style-heading styles) > 0
+            not none? style-size styles
+        ]
+    ]
+
+    max-style-size: function [
+        "Largest effective font size from style blocks in a line of pairs (0 if none)"
+        line-block [block!]
+    ][
+        best: 0
+        foreach pair line-block [
+            if all [block? pair (length? pair) >= 2 block? pair/2][
+                sz: font-size-for pair/2
+                if sz > best [best: sz]
+            ]
+        ]
+        either best > 0 [best][font-size]
     ]
 
     line-advance: func [
-        {Vertical slot a line needs: at least line-height, but tall enough for its
-         largest heading so a following line cannot touch the heading's descenders.}
+        {Vertical slot a line needs: spacing-factor x its largest font size.
+         Above the base size the (tunable) large factor is used. Wrapped visual
+         lines each get their own slot.}
         line-block [block!]
+        /local sz f
     ][
-        max line-height max-style-size line-block
+        sz: max-style-size line-block
+        f: either sz > font-size [line-height-factor-large][line-height-factor]
+        max 1 to integer! (sz * f)
+    ]
+
+    line-gap: func [
+        {Extra space before a line of size sz when the previous line's size is prev,
+         so consecutive baselines follow the size-dependent spacing factor.
+         Returns 0 when there is no previous line (prev = 0).}
+        sz [integer!] prev [integer!]
+        /local d f m
+    ][
+        m: max sz prev
+        f: either m > font-size [line-height-factor-large][line-height-factor]
+        d: to integer! ((sz - prev) * f)
+        max 0 d
     ]
 
     footer-height: func [
-        "Total vertical space the footer block needs (sum of its per-line advances)"
+        "Total vertical space the footer needs (line advances plus inter-line gaps)"
         ftr [object! none!]
-        /local h line
+        /local h line sz prev
     ][
         h: 0
+        prev: 0
         if all [ftr ftr/lines][
-            foreach line ftr/lines [h: h + line-advance line]
+            foreach line ftr/lines [
+                sz: max-style-size line
+                if prev > 0 [h: h + line-gap sz prev]
+                h: h + line-advance line
+                prev: sz
+            ]
         ]
         h
     ]

@@ -17,6 +17,9 @@ Red [
 ; (bare number = ch, so #60px keeps pixels); with no width in the image clause
 ; the contained images take the column width.
 
+if exists? %samples/ [      ;make sure we are in the script directory
+    change-dir %samples/
+]
 report: [
     [BODY [
         ["Intrinsic width; the caption defaults to the file name:" [h3]]
@@ -31,7 +34,7 @@ report: [
         [IMAGE 120 %../assets/Magician.jpg ["" [border 2 silver]]]
 
         ["Thumbnails (the COLUMN width also sizes the images):" [h3]]
-        [COLUMN #60px #10px image [shadow 5 silver link-1][
+        [COLUMN #60px #10px image [shadow 5 silver link-1 s-8][
             [IMAGE %../assets/Empress.jpg]
             [IMAGE %../assets/Chariot.jpg]
             [IMAGE %../assets/Emperor.jpg]
@@ -48,4 +51,5 @@ report: [
 
 #include %../libs/report-view.red
 
-show-report/fit-width report "07 — Image"
+error-msg: show-report/fit-width report "07 — Image"
+if error-msg <> "" [alert error-msg]

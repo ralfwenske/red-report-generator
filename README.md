@@ -44,7 +44,7 @@ red tests/check.red --pdf    # also render each sample to a temp PDF
 ## Layout
 
 - `sampler.red` — the single entry point
-- `sampler2.red` — edit-and-run sampler (double-click a sample to run the edited text; save variants as `*-mod.red`)
+- `sampler2.red` — edit-and-run sampler (double-click a sample to run the edited text; save variants as `*-mod.red`). Each sample runs in its own context, so a sample's variables cannot clobber the sampler.
 - `samples/` — one file = one lesson (numeric prefix sets order)
 - `assets/` — images shared by samples
 - `libs/` — the six library files (parser, styles, view, pdf, pdf-kit, pdf-fonts)

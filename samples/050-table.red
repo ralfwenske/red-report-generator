@@ -45,4 +45,5 @@ report: [
 
 #include %../libs/report-view.red
 
-show-report/fit-width report "05 — Table"
+error-msg: show-report/fit-width report "05 — Table"
+if error-msg <> "" [alert error-msg]

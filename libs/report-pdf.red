@@ -253,8 +253,9 @@ report-pdf: make report-styles [
     ][
         b?: style-has styles 'b
         i?: style-has styles 'i
-        m?: style-has styles 'm
-        s?: style-has styles 's
+        fam: style-family styles
+        m?: fam = 'mono
+        s?: fam = 'sans
         hd: style-heading styles
 
         either hd > 0 [
@@ -329,11 +330,13 @@ report-pdf: make report-styles [
     font-scale-for: func [
         "Per-family size multiplier for a style block (mono > sans > serif)."
         styles [block!]
+        /local fam
     ][
+        fam: style-family styles
         case [
-            style-has styles 'm [font-scale-mono]
-            style-has styles 's [font-scale-sans]
-            true               [font-scale-serif]
+            fam = 'mono [font-scale-mono]
+            fam = 'sans [font-scale-sans]
+            true        [font-scale-serif]
         ]
     ]
 
@@ -344,10 +347,10 @@ report-pdf: make report-styles [
     ][
         any-style?: any [
             style-has styles 'b  style-has styles 'i  style-has styles 'u
-            style-has styles 'm  style-has styles 's  (style-heading styles) > 0
+            style-nondefault-font? styles
         ]
         fno: either any-style? [font-for-styles styles][regular-font]
-        sz: (heading-size style-heading styles) * font-scale-for styles
+        sz: (font-size-for styles) * font-scale-for styles
         pdf-kit/text-width fno sz text
     ]
 
@@ -362,15 +365,12 @@ report-pdf: make report-styles [
             style-has styles 'b
             style-has styles 'i
             style-has styles 'u
-            style-has styles 'm
-            style-has styles 's
-            (style-heading styles) > 0
+            style-nondefault-font? styles
         ]
         bg: style-bg-color styles
         fg: style-fg-color styles
         fc: style-frame-color styles
-        sz: heading-size style-heading styles
-        sz: sz * font-scale-for styles
+        sz: (font-size-for styles) * font-scale-for styles
         font-no: either any-style? [font-for-styles styles][regular-font]
         ut: style-underline-type/explicit styles
 
@@ -481,11 +481,15 @@ report-pdf: make report-styles [
         /tokens pn [integer!] tp [integer!]
     ][
         if none? hdr [return page-y]
+        prev: 0
         foreach line hdr/lines [
+            sz: max-style-size line
+            if prev > 0 [page-y: page-y - line-gap sz prev]
             if tokens [
                 render-header-pairs/default-style out page-y line pn tp date-str time-str datetime-str ['b]
             ]
             page-y: page-y - line-advance line
+            prev: sz
         ]
         if tokens [emit-font out regular-font]
         page-y
@@ -497,13 +501,29 @@ report-pdf: make report-styles [
         date-str [string!] time-str [string!] datetime-str [string!]
     ][
         if none? ftr [exit]
-        ; lines stack upward from margin-bottom; a heading line takes its own slot
-        h: 0
-        foreach line ftr/lines [h: h + line-advance line]
-        ftr-y: margin-bottom + h
+        ; lines stack upward from margin-bottom with the same inter-line gaps
+        advs: copy []
+        gaps: copy []
+        ys: copy []
+        prev: 0
         foreach line ftr/lines [
-            ftr-y: ftr-y - line-advance line
-            render-header-pairs out ftr-y line page-num total-pages date-str time-str datetime-str
+            sz: max-style-size line
+            append advs line-advance line
+            append gaps either prev > 0 [line-gap sz prev][0]
+            prev: sz
+        ]
+        cur: margin-bottom
+        i: length? ftr/lines
+        while [i >= 1][
+            append ys cur
+            if i > 1 [cur: cur + (pick gaps i) + (pick advs (i - 1))]
+            i: i - 1
+        ]
+        ys: reverse ys
+        i: 0
+        foreach line ftr/lines [
+            i: i + 1
+            render-header-pairs out (pick ys i) line page-num total-pages date-str time-str datetime-str
         ]
     ]
 
@@ -711,7 +731,7 @@ report-pdf: make report-styles [
         "Emit an image row inside a column; returns the (uniform) row height consumed"
         out [string!] x [integer!] y [integer!]
         row [object!] col-w [integer!] avail [integer!] col-styles [block! none!] col-img-w [issue! none!] img-row-h [integer!]
-        /local h ia wfile img ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles ch cw asp
+        /local h ia wfile img ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles ch cw asp cap-line
     ][
         h: line-height
         ia: parse-image-args row/args
@@ -723,7 +743,8 @@ report-pdf: make report-styles [
                 base-color: ci/2
                 img-cap: ci/1
                 cap-styles: ci/5
-                cap-h: either img-cap [line-height][0]
+                cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
+                cap-h: either img-cap [line-advance cap-line][0]
                 asp: to float! img/size/y / img/size/x
                 ch: max 1 (img-row-h - line-height - cap-h)
                 base-w: either col-img-w [width-to-px col-img-w 'px][
@@ -739,7 +760,7 @@ report-pdf: make report-styles [
                     emit out [pdf-kit/rgb base-color " rg " (pdf-kit/num (x + bx)) " " (pdf-kit/num (y + by - bh)) " " (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
                 ]
                 if emit-image out (x + ix) (y + iy) img-w img-h wfile [
-                    if img-cap [emit-styled-text out x (y - block-h - line-height) img-cap bw "C" cap-styles]
+                    if img-cap [emit-styled-text out x (y - block-h - cap-h) img-cap bw "C" cap-styles]
                 ]
             ]
         ]
@@ -799,6 +820,7 @@ report-pdf: make report-styles [
         emit-font page-content regular-font
 
         page-y: usable-top
+        prev-line-size: 0
         page-y: emit-header page-content hdr page-y date-str time-str datetime-str
 
         new-page: does [
@@ -807,6 +829,7 @@ report-pdf: make report-styles [
             page-content: copy ""
             emit-font page-content regular-font
             page-y: usable-top
+            prev-line-size: 0
             page-y: emit-header page-content hdr page-y date-str time-str datetime-str
         ]
 
@@ -885,10 +908,14 @@ report-pdf: make report-styles [
                                 cap-styles: cap-info/5
                                 decl-w: image-declared-width ia cap-info
                                 img-aspect: to float! img-obj/size/y / img-obj/size/x
-                                cap-h: either img-cap [line-height][0]
+                                cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
+                                cap-h: either img-cap [line-advance cap-line][0]
                                 ; reserve the caption line + the line below so the whole block fits the page
-                                img-avail-h: max 1 (usable-top - page-bottom - line-height - cap-h)
                                 img-avail-w: max 1 (page-width - margin-left - margin-right)
+                                img-avail-full: max 1 (usable-top - page-bottom - line-height - cap-h)
+                                ; no width argument: fit what is left on THIS page (put it first
+                                ; for a full-page image); a declared width is contained to the page
+                                img-avail-h: either decl-w [img-avail-full][max 1 (page-y - page-bottom - line-height - cap-h)]
                                 img-base-w: either decl-w [width-to-px decl-w 'px][
                                     ; no width: contain the image in the available height (and width), keep aspect
                                     iw: img-obj/size/x
@@ -921,7 +948,7 @@ report-pdf: make report-styles [
                                 ]
                                 emit-image page-content (margin-left + ix) (page-y + iy) img-w img-h img-file
                                 if img-cap [
-                                    emit-styled-text page-content margin-left (page-y - block-h - line-height) img-cap bw "C" cap-styles
+                                    emit-styled-text page-content margin-left (page-y - block-h - cap-h) img-cap bw "C" cap-styles
                                 ]
                                 page-y: page-y - block-h - line-height - cap-h
                             ][
@@ -1061,14 +1088,15 @@ report-pdf: make report-styles [
             ][
                 if block? line [
                     lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
-                    first?: true
                     foreach l lines [
-                        if first? [page-y: page-y - heading-gap l]
+                        sz: max-style-size l
+                        ; keep consecutive baselines factor x max(prev, cur) apart
+                        if prev-line-size > 0 [page-y: page-y - line-gap sz prev-line-size]
                         adv: line-advance l
                         if (page-y - adv) < page-bottom [new-page]
                         render-pairs-line page-content l page-y
                         page-y: page-y - adv
-                        first?: false
+                        prev-line-size: sz
                     ]
                 ]
             ]

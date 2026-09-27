@@ -39,4 +39,5 @@ report: [
 
 #include %../libs/report-view.red
 
-show-report/popup/fit-width report "09 — Links" :do-popup
+error-msg: show-report/popup/fit-width report "09 — Links" :do-popup
+if error-msg <> "" [alert error-msg]

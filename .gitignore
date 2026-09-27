@@ -10,3 +10,7 @@ check-*.pdf
 
 # Variants saved by sampler2 (…-mod.red)
 samples/*-mod.red
+
+# Local backups and stray outputs
+samples copy/
+*.pdf

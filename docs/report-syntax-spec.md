@@ -179,9 +179,11 @@ line-item    := [ value style-block? value style-block? … ]
   Example: `[COLUMN auto 1 m rows]`.
 - *image clause* — the word `image` followed by one style block styles every contained `IMAGE`
   (and only images): `[COLUMN … image [img-styles] [rows]]`. The image style block uses the IMAGE
-  grammar from §4.4; it may carry a **default image width** (`#Npx`/`#Nch`, e.g.
-  `image [#80px shadow 3 silver]`). Generics and the image clause may both be present
-  (`[COLUMN b image [#80px shadow 3 silver] rows]`): text rows get `b`, images the image styles.
+  grammar from §4.4, including caption text styles — so a **family and/or size** applies to all
+  the column's image captions, e.g. `image [shadow 3 silver s-8 link-1]`. It may carry a
+  **default image width** (`#Npx`/`#Nch`, e.g. `image [#80px shadow 3 silver]`). Generics and
+  the image clause may both be present (`[COLUMN b image [#80px shadow 3 silver] rows]`): text
+  rows get `b`, images the image styles.
   With **no** `image` clause a contained image falls back to its **own** caption style block.
 - Rows may be line items or image items. Line rows get the text styles; image rows are styled
   solely by the `image` clause or their own caption. **Contained image widths are ignored** —
@@ -199,8 +201,10 @@ line-item    := [ value style-block? value style-block? … ]
 - *file* — a `file!` or `string!` path.
 - *width* — optional first argument, **belonging to the image** (not the caption): a bare
   number is pixels (see §7), or `#Npx` / `#Nch` for an explicit unit. When omitted the image
-  uses its **intrinsic width, contained to the available height and width** (proportions
-  kept). Inside a `COLUMN` a width-less image is contained to the column width (see §4.3).
+  is scaled to its **intrinsic proportions, contained to the space still free on the current
+  page** (so it fits under preceding text instead of forcing a page break); put it first in
+  the body for a full-page image. Inside a `COLUMN` a width-less image is contained to the
+  column width (see §4.3).
   For backward compatibility a `#Npx` / `#Nch` at the start of the caption style block is
   also honoured as a fallback when no width argument is given.
 - The optional trailing block is the image's **caption line** — exactly one value + a style block.
@@ -213,10 +217,12 @@ line-item    := [ value style-block? value style-block? … ]
   2. optional **integer** — the inset / offset in points (**defaults to 5% of the image width**);
   3. optional **color** — the shadow/border colour (default `silver`); the **first** colour after
      `shadow`/`border` is consumed as the box colour;
-  4. the remaining words are the caption's **text styles** (`b i u s m h1-h3`, `link-N`, `hint-N`,
-     `!X`) and the trailing 1–3 **colours** (font, background, frame) — as on a line.
-     `link-N`/`hint-N` make the **whole image area** an interactive hotspot (the caption is the
-     popup text, `N` the id); `link-N` implies a solid underline, `hint-N` a dotted one (View-only).
+  4. the remaining words are the caption's **text styles** (`b i u s`/`ss`/`m` `h1-h3`, any
+      `-N` size such as `s-8`/`m-10`, `link-N`, `hint-N`, `!X`) and the trailing 1–3
+      **colours** (font, background, frame) — as on a line. The caption keeps the normal
+      text size unless its style block sets one.
+      `link-N`/`hint-N` make the **whole image area** an interactive hotspot (the caption is the
+      popup text, `N` the id); `link-N` implies a solid underline, `hint-N` a dotted one (View-only).
 - Examples:
   - `[IMAGE %Empress.jpg]` — intrinsic width contained to the page; caption `Empress`.
   - `[IMAGE 120 %Empress.jpg ["Empress" [shadow 3 red link-1]]]` — 120 px, red shadow, linked.
@@ -270,9 +276,11 @@ proposal suggested "center if no alignment given" — *not* adopted; `'^` was ke
 | `i` | italic |
 | `u` | underline |
 | `!u` | negate underline — suppresses `u`, and the automatic underline implied by `link-N`/`hint-N` |
-| `s` | sans-serif font |
+| `s` | serif font (the default) |
+| `ss` | sans-serif font |
 | `m` | monospace font |
 | `h1` / `h2` / `h3` | heading levels, font sizes 24 / 18 / 14 pt |
+| `word-N` | any style word may carry a `-N` size suffix (points), e.g. `i-8` (italic 8), `m-10` (mono 10), `ss-12` (sans 12), `h2-20`; it sets that value's font size, or the whole line when used in the line's leading style block |
 
 ### 5.3 Value formatting
 
@@ -529,12 +537,19 @@ report-pdf/make-font/line styles size factor
 (`b i u s m h1-h3`, `link-N`, colours — see §5.2) plus a size in points, e.g.
 `report-view/make-font [m] 8`. It applies to every value; per-line and per-value
 styles merge on top, and `!X` drops a base style, so any value can still override
-it locally (`[!m s]` = sans where the base is mono). Headings scale with the base
+it locally (`[!m ss]` = sans where the base is mono). Headings scale with the base
 size (`h1` = 2×, `h2` = 1.5×, `h3` = 1.17×; the 12 pt default gives 24/18/14 as
-before). Line spacing is **`line-height-factor × base size`** (default `1.6`),
-measured per renderer, so the two renderers keep the same pitch; tune each
-independently with `report-view/line-height-factor` / `report-pdf/line-height-factor`,
-or in the same call as the font: `report-view/make-font/line [m] 11 1.6`.
+before). Line spacing is automatic and uniform across header, footer and body:
+consecutive baselines are **`line-height-factor × max(size of the two lines)`**
+(default factor `1.6`), where a line's size is its explicit `-N` size, else its
+heading size, else the base size. So `h1`, `s-24` and plain text all lead
+correctly wherever they are used; a wrapped string's visual lines each take part
+in the same rule. The only exception: there is no gap before the first line of a
+page/block (nothing above it). Tune with `report-view/line-height-factor` /
+`report-pdf/line-height-factor`, or `report-view/make-font/line [m] 11 1.6`; lines
+whose size is above the base size use a second knob,
+`report-view/line-height-factor-large` / `report-pdf/line-height-factor-large`
+(lower it if headings or big `-N` sizes get too much leading).
 A line containing a heading reserves **its own height** (`max(line-height,
 heading-size)`), so a following line can never touch the heading's descenders
 (header, footer and body alike). One call configures the View **and** PDF

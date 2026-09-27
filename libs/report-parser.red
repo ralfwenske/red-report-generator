@@ -258,11 +258,12 @@ parse-section: func [
 
     ; style-word vocabulary is defined once in report-styles (style-words)
 
-    style-word-ok?: func [
-        {Is an atom allowed in a style block? Allows decoration/heading/family words,
-         format words, alignment (< > ^), shadow/border, link-N/hint-N, !X negations,
-         widths (integer/float, #Npx/#Nch) and colour words/tuples.}
+    style-atom-ok?: func [
+        {Is a single style atom allowed? Family words (s/m/ss), any style word with
+         an optional -N size suffix (e.g. i-8, m-10, ss-12), format/alignment words,
+         link-N/hint-N, widths and colours are allowed.}
         s [any-type!]
+        /local ss
     ][
         case [
             tuple? s [true]
@@ -271,18 +272,54 @@ parse-section: func [
             word? s [
                 any [
                     find report-styles/style-words s
+                    not none? report-styles/family-of s
+                    all [
+                        ss: report-styles/size-suffix s
+                        any [
+                            find report-styles/style-words ss/1
+                            not none? report-styles/family-of ss/1
+                        ]
+                    ]
                     all [(length? form s) >= 6 (copy/part form s 5) = "link-"]
                     all [(length? form s) >= 6 (copy/part form s 5) = "hint-"]
-                    all [
-                        (length? form s) >= 2
-                        (first form s) = #"!"
-                        find report-styles/style-words to word! copy skip form s 1
-                    ]
                     tuple? attempt [get s]    ; colour word
                 ]
             ]
             true [false]
         ]
+    ]
+
+    style-word-ok?: func [
+        {Is an atom allowed in a style block? As style-atom-ok?, plus !X negations.}
+        s [any-type!]
+    ][
+        either all [word? s (length? form s) >= 2 (first form s) = #"!"][
+            style-atom-ok? to word! copy skip form s 1
+        ][
+            style-atom-ok? s
+        ]
+    ]
+
+    style-hint: func [
+        {Suggestion for a mistyped style word: family/style word + digits without the
+         hyphen, e.g. s16 -> 's-16'. Returns " (did you mean 's-16'?)" or "".}
+        s [any-type!]
+        /local f i prefix num pw c ok
+    ][
+        if not word? s [return ""]
+        f: form s
+        i: 1
+        while [all [i <= length? f not all [f/:i >= #"0" f/:i <= #"9"]]][i: i + 1]
+        if any [i > length? f i = 1][return ""]
+        prefix: copy/part f (i - 1)
+        num: copy skip f (i - 1)
+        ok: true
+        foreach c num [if not all [c >= #"0" c <= #"9"][ok: false break]]
+        unless ok [return ""]
+        pw: attempt [to word! prefix]
+        unless pw [return ""]
+        unless any [find report-styles/style-words pw  not none? report-styles/family-of pw][return ""]
+        rejoin [" (did you mean '" prefix "-" num "'?)"]
     ]
 
     check-line-styles: func [
@@ -294,7 +331,7 @@ parse-section: func [
             if all [(length? pair) >= 2 block? pair/2][
                 foreach s pair/2 [
                     unless style-word-ok? s [
-                        return rejoin [sec-name " line " i ": unknown style word '" mold s "'"]
+                        return rejoin [sec-name " line " i ": unknown style word '" mold s "'" style-hint s]
                     ]
                 ]
             ]
@@ -313,7 +350,7 @@ parse-section: func [
                 if msg: bad-negation v [return msg]
             ][
                 if all [word? v (length? f: form v) >= 2 (first f) = #"!"][
-                    unless find report-styles/style-words to word! copy skip f 1 [return v]
+                    unless style-atom-ok? to word! copy skip f 1 [return v]
                 ]
             ]
         ]
@@ -378,7 +415,7 @@ parse-section: func [
         if msg [return msg]
         ;--- Negations are consumed by merge-styles, so check the raw page for them ---
         a: bad-negation page
-        if a [return rejoin ["unknown style negation '" mold a "'"]]
+        if a [return rejoin ["unknown style negation '" mold a "'" style-hint a]]
 
         ;--- Parse under try: catches runtime errors in parens etc. ---
         err: try [pg: parse-report page]
@@ -415,7 +452,7 @@ parse-section: func [
             ]
             foreach a sec/args [
                 unless style-word-ok? a [
-                    return rejoin [sec-name " args: unknown style word '" mold a "'"]
+                    return rejoin [sec-name " args: unknown style word '" mold a "'" style-hint a]
                 ]
             ]
             i: 0
@@ -483,33 +520,15 @@ parse-section: func [
                                         return rejoin [sec-name " line " i ": COLUMN takes at most (width gap), got " mold ln/args]
                                     ]
                                 ][
-                                    aw: form a
-                                    unless any [
-                                        find [b i u s m h1 h2 h3] a
-                                        a = 'shadow
-                                        all [word? a tuple? attempt [get a]]
-                                        all [(length? aw) >= 2 (first aw) = #"!"]
-                                        all [(length? aw) >= 6 (copy/part aw 5) = "link-"]
-                                        all [(length? aw) >= 6 (copy/part aw 5) = "hint-"]
-                                    ][
-                                        return rejoin [sec-name " line " i ": COLUMN arg must be a number, #px/#ch tag, 'auto or a style word (m s b u i h1 h2 h3 !u link-N), got " mold a]
+                                    unless style-word-ok? a [
+                                        return rejoin [sec-name " line " i ": COLUMN arg must be a number, #px/#ch tag, 'auto or a style word (s/ss/m, b u i, h1-h3, -N sizes, link-N), got " mold a]
                                     ]
                                 ]
                             ]
                             if ln/img [
                                 foreach st ln/img [
-                                    unless any [
-                                        all [word? st find [shadow border] st]
-                                        issue? st
-                                        integer? st
-                                        tuple? st
-                                        all [word? st tuple? attempt [get st]]
-                                        all [word? st find [b i u s m h1 h2 h3 !u < > ^] st]
-                                        all [(length? form st) >= 2 (first form st) = #"!"]
-                                        all [(length? form st) >= 6 (copy/part form st 5) = "link-"]
-                                        all [(length? form st) >= 6 (copy/part form st 5) = "hint-"]
-                                    ][
-                                        return rejoin [sec-name " line " i ": COLUMN image style must be shadow/border, an inset number, a color, or a caption style (b i u m s h1-h3 link-N), got " mold st]
+                                    unless style-word-ok? st [
+                                        return rejoin [sec-name " line " i ": COLUMN image style must be shadow/border, an inset number, a width, a color, or a caption style (s/ss/m, b i u, h1-h3, -N sizes, link-N), got " mold st]
                                     ]
                                 ]
                             ]

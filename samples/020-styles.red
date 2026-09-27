@@ -14,7 +14,7 @@ Red [
 
 report: [
     [BODY [
-        ["bold " [b] "italic " [i] "underline " [u] "sans " [s] "mono " [m]]
+        ["bold " [b] "italic " [i] "underline " [u] "sans " [ss] "mono " [m]]
         []
         ["red " [red] " white on blue " [white blue] " - "  "  boxed  " [black yellow red]]
         ["|" "left" [< 10] "|" "centre" [^ 10] "|" "right" [> 10] "|"] 
@@ -28,4 +28,5 @@ report: [
 
 #include %../libs/report-view.red
 
-show-report/fit-width report "02 — Styles"
+error-msg: show-report/fit-width report "02 — Styles"
+if error-msg <> "" [alert error-msg]

@@ -12,6 +12,21 @@ unless exists? %samples/ [      ;make sure we are in the script directory
     change-dir first split-path system/options/script
 ]
 
+; Wrap show-report so a sample's validation/problem message (returned as a string)
+; is not lost when the sample runs in its own context.
+real-show-report: :show-report
+show-status: ""
+show-report: func [report [block!] title [string!] /popup popup-fn /fit-width][
+    show-status: case [
+        all [popup fit-width] [real-show-report/popup/fit-width report title :popup-fn]
+        popup                 [real-show-report/popup report title :popup-fn]
+        fit-width             [real-show-report/fit-width report title]
+        true                  [real-show-report report title]
+    ]
+]
+; samples call `alert error-msg`; the sampler shows that message itself
+alert: func [msg [any-type!]][]
+
 names: [] 
 files: []
 modified: false
@@ -45,54 +60,52 @@ view/flags [
     below
     h2 "Report Generator Sampler"
     h4 "Select a sample to show its source. Double-click code area to render it."
+    h4 "A modified sample will be saved under <filename>-mod.red"
+    h4 "so the original file is preserved"
     across
     list: text-list 240x560 data names
         on-select [
-            code/text: read files/(list/selected)
+            f: to-file files/(list/selected)
+            src/text: read f
             modified: false
-            save-btn/enabled?: false
         ]
         react [face/size/y: face/parent/size/y - 160]
 
-    code: area 660x560 wrap font-name "Fixedsys" 
+    src: area 660x560 wrap font-name "Fixedsys" 
         on-dbl-click [
             ; run with cwd = the sample's directory so its %../libs and
             ; %../assets relative paths resolve, then restore (like `do f`)
             saved: what-dir
-            change-dir first split-path files/(list/selected)
-            result: try [do load code/text]
+            if modified [ 
+                f: to-string files/(list/selected)
+                ; if we are already editing a *-mod.red variant, save in place
+                p: either find f "-mod.red" [f][replace copy f ".red" "-mod.red"]
+                write to-file p src/text
+                modified: false
+                get-samples
+                list/data: names
+                list/selected: find files p
+            ]
+            show-status: ""
+            result: try [context load src/text]
             change-dir saved
             either error? result [
                 show-error form result
             ][
-                either ("" = result) [
-                    if modified [save-btn/enabled?: true]
-                ][
-                    show-error result 
-                ]
+                if all [string? show-status show-status <> ""][show-error show-status]
             ]
         ]
         on-key [modified: true]
-        react [code/size: (code/parent/size - 280x160) ]
+        react [src/size: (src/parent/size - 280x160) ]
     return
 
-    save-btn: button "SAVE *-mod.red" disabled [
-        f: files/(list/selected)
-        unless find f "-mod.red" [
-            replace f ".red" "-mod.red"
-        ]
-        write to-file f code/text
-        modified: false
-        get-samples  
-        list/data: names
-    ] react [face/offset/y: face/parent/size/y - 40]
 
     button "Quit"  [quit] react [face/offset: face/parent/size - 80x40]
 
     do [
         if not empty? names [
             list/selected: 2
-            code/text: read files/2
+            src/text: read files/2
         ]
     ]
 ][resize]

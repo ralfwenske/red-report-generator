@@ -32,4 +32,5 @@ report: compose/deep [
 
 #include %../libs/report-view.red
 
-show-report report "01 — Hello"
+error-msg: show-report report "01 — Hello"
+if error-msg <> "" [alert error-msg]

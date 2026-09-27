@@ -58,6 +58,7 @@ report-view: make report-styles [
     page-num: 0
     total-pages: 0
     pages: copy []
+    prev-line-size: 0   ; largest font size of the previously drawn body line
     current-hdr: none
     current-ftr: none
     date-str: ""
@@ -76,17 +77,22 @@ report-view: make report-styles [
     build-font: func [
         "Create font! for style combo and size (cached)"
         styles [block!] sz [integer!]
-        /local name b? i? hd spec key cached fnt scale
+        /local name b? i? hd spec key cached fnt scale fam
     ][
+        fam: style-family styles
         b?: style-has styles 'b
         i?: style-has styles 'i
         hd: style-heading styles
-        if all [hd > 0 not b? not (style-has styles 'm) not i?][b?: true]
-        name: font-face-serif
-        scale: font-scale-serif
-        case [
-            style-has styles 'm [name: font-face-mono  scale: font-scale-mono]
-            style-has styles 's [name: font-face-sans  scale: font-scale-sans]
+        if all [hd > 0 not b? fam <> 'mono not i?][b?: true]
+        name: case [
+            fam = 'mono [font-face-mono]
+            fam = 'sans [font-face-sans]
+            true      [font-face-serif]
+        ]
+        scale: case [
+            fam = 'mono [font-scale-mono]
+            fam = 'sans [font-scale-sans]
+            true      [font-scale-serif]
         ]
         key: reduce [name sz any [b? false] any [i? false] scale]
         if cached: select font-cache key [return cached]
@@ -148,9 +154,9 @@ report-view: make report-styles [
     ][
         any-style?: any [
             style-has styles 'b  style-has styles 'i  style-has styles 'u
-            style-has styles 'm  style-has styles 's  (style-heading styles) > 0
+            style-nondefault-font? styles
         ]
-        sz: heading-size style-heading styles
+        sz: font-size-for styles
         either any-style? [set-font styles sz][set-font [] font-size]
         measure-text text
     ]
@@ -162,7 +168,7 @@ report-view: make report-styles [
     ][
         any-style?: any [
             style-has styles 'b  style-has styles 'i  style-has styles 'u
-            style-has styles 'm  style-has styles 's  (style-heading styles) > 0
+            style-nondefault-font? styles
         ]
         either any-style? [set-font styles sz][set-font [] font-size]
         tw: measure-text alphabet
@@ -433,12 +439,10 @@ report-view: make report-styles [
             style-has styles 'b
             style-has styles 'i
             style-has styles 'u
-            style-has styles 'm
-            style-has styles 's
-            (style-heading styles) > 0
+            style-nondefault-font? styles
         ]
         fg: any [style-fg-color styles 0.0.0]
-        sz: heading-size style-heading styles
+        sz: font-size-for styles
 
         either any-style? [set-font styles sz][set-font [] font-size]
         fh: measure-height
@@ -566,14 +570,18 @@ report-view: make report-styles [
         hdr [object! none!] y-pos [integer!]
         d-str [string!] t-str [string!] dt-str [string!]
         /tokens pn [integer!] tp [integer!]
-        /local line
+        /local line sz prev
     ][
         if none? hdr [return y-pos]
+        prev: 0
         foreach line hdr/lines [
+            sz: max-style-size line
+            if prev > 0 [y-pos: y-pos - line-gap sz prev]
             if tokens [
                 draw-header-pairs/default-style y-pos line pn tp d-str t-str dt-str ['b]
             ]
             y-pos: y-pos - line-advance line
+            prev: sz
         ]
         if tokens [set-font [] font-size]
         y-pos
@@ -583,16 +591,32 @@ report-view: make report-styles [
         "Render footer block at bottom of page"
         ftr [object! none!] pn [integer!] tp [integer!]
         d-str [string!] t-str [string!] dt-str [string!]
-        /local ftr-y line h
+        /local ftr-y line advs gaps ys i sz prev cur
     ][
         if none? ftr [exit]
-        ; lines stack upward from margin-bottom; a heading line takes its own slot
-        h: 0
-        foreach line ftr/lines [h: h + line-advance line]
-        ftr-y: margin-bottom + h
+        ; lines stack upward from margin-bottom with the same inter-line gaps
+        advs: copy []
+        gaps: copy []
+        prev: 0
         foreach line ftr/lines [
-            ftr-y: ftr-y - line-advance line
-            draw-header-pairs ftr-y line pn tp d-str t-str dt-str
+            sz: max-style-size line
+            append advs line-advance line
+            append gaps either prev > 0 [line-gap sz prev][0]
+            prev: sz
+        ]
+        ys: copy []
+        cur: margin-bottom
+        i: length? ftr/lines
+        while [i >= 1][
+            append ys cur
+            if i > 1 [cur: cur + (pick gaps i) + (pick advs (i - 1))]
+            i: i - 1
+        ]
+        ys: reverse ys
+        i: 0
+        foreach line ftr/lines [
+            i: i + 1
+            draw-header-pairs (pick ys i) line pn tp d-str t-str dt-str
         ]
     ]
 
@@ -777,6 +801,7 @@ report-view: make report-styles [
         page-draw: compose [fill-pen white pen off box 0x0 (as-pair page-width page-height)]
         set-font [] font-size
         page-y: usable-top
+        prev-line-size: 0
         page-y: draw-header current-hdr page-y date-str time-str datetime-str
     ]
 
@@ -785,17 +810,18 @@ report-view: make report-styles [
     _emit-pairs: func [
         "Render pairs line from content (word-wrapped to the content width)"
         line [block!]
-        /local adv lines l first?
+        /local adv lines l sz
     ][
         lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
-        first?: true
         foreach l lines [
-            if first? [page-y: page-y - heading-gap l]
+            sz: max-style-size l
+            ; keep consecutive baselines factor x max(prev, cur) apart
+            if prev-line-size > 0 [page-y: page-y - line-gap sz prev-line-size]
             adv: line-advance l
             if (page-y - adv) < page-bottom [new-page]
             draw-pairs-line l page-y
             page-y: page-y - adv
-            first?: false
+            prev-line-size: sz
         ]
     ]
 
@@ -870,7 +896,7 @@ report-view: make report-styles [
         line [object!]
         /local ia img-file img-obj aspect avail-h avail-w base-w w
                ge base-color img-cap img-w img-h bw bh bx by ix iy block-h cap-h cap-info cap-styles
-               decl-w left-a right-a top-a bot-a
+               decl-w left-a right-a top-a bot-a avail-full cap-line
     ][
         ia: parse-image-args line/args
         if all [not empty? ia ia/2][
@@ -883,10 +909,14 @@ report-view: make report-styles [
                 cap-styles: cap-info/5
                 decl-w: image-declared-width ia cap-info
                 aspect: to float! img-obj/size/y / img-obj/size/x
-                cap-h: either img-cap [line-height][0]
+                cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
+                cap-h: either img-cap [line-advance cap-line][0]
                 ; reserve the caption line + the line below so the whole block fits the page
-                avail-h: max 1 (usable-top - page-bottom - line-height - cap-h)
                 avail-w: max 1 (page-width - margin-left - margin-right)
+                avail-full: max 1 (usable-top - page-bottom - line-height - cap-h)
+                ; no width argument: fit what is left on THIS page (put it first for a
+                ; full-page image). A declared width is contained to the page instead.
+                avail-h: either decl-w [avail-full][max 1 (page-y - page-bottom - line-height - cap-h)]
                 base-w: either decl-w [width-to-px decl-w 'px][
                     ; no width: contain the image in the available height (and width), keep aspect
                     w: img-obj/size/x
@@ -922,7 +952,7 @@ report-view: make report-styles [
                 ]
                 draw-image-func (margin-left + ix) (page-y + iy) img-w img-h img-file
                 if img-cap [
-                    draw-styled-text margin-left (page-y - block-h - line-height) img-cap bw "C" cap-styles
+                    draw-styled-text margin-left (page-y - block-h - cap-h) img-cap bw "C" cap-styles
                 ]
                 ; make the whole image area a link/hint hotspot
                 if any [cap-info/6 cap-info/7] [
@@ -1236,6 +1266,7 @@ report-view: make report-styles [
         set-font [] font-size
 
         page-y: usable-top
+        prev-line-size: 0
         page-y: draw-header current-hdr page-y date-str time-str datetime-str
 
         foreach line page-obj/content/lines [

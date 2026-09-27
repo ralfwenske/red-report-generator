@@ -33,4 +33,5 @@ report: compose/deep [
 
 #include %../libs/report-view.red
 
-show-report/fit-width report "06 — Column"
+error-msg: show-report/fit-width report "06 — Column"
+if error-msg <> "" [alert error-msg]

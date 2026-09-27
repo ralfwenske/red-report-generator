@@ -28,4 +28,5 @@ report: [
 
 #include %../libs/report-view.red
 
-show-report report "15 — Paper"
+error-msg: show-report report "15 — Paper"
+if error-msg <> "" [alert error-msg]

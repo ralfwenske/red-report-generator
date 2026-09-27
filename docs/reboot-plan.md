@@ -326,11 +326,29 @@ Sketch of the first three (content only, to be written during implementation):
   available width is the page/popup width (known only to the renderer — `show-popup`
   sets it on the viewer) and accurate breaks need real font metrics.
 - **Line spacing** — replaced the additive `line-height-offset` with a
-  multiplicative `line-height-factor` (default `1.4`): `line-height =
-  to integer! (font-size * line-height-factor)`. A factor scales with the font,
-  where the old `+6` gave too much leading at small sizes and too little at large
-  ones. `1.5` reproduces the previous 12 pt → 18 px spacing. (`report-styles` had
-  an inconsistent `+3`; both renderers now inherit the factor.)
+  multiplicative `line-height-factor` (default `1.6`). Line spacing is automatic
+  and uniform across header/footer/body: the distance between consecutive
+  baselines is `line-height-factor × max(size of the two lines)`, where a line's
+  size is its `-N` size, else its heading size, else the base size (a plain
+  `report-styles/line-advance` slot plus a `line-gap` computed from the previous
+  line's size). No gap is inserted before the first line of a page/block — the
+  only exception. Tune per renderer (`report-view/line-height-factor` /
+  `report-pdf/line-height-factor`) or with `make-font/line`; lines above the base
+  size use a second knob `line-height-factor-large` (e.g. lower it to 1.2 to
+  tighten headings/big `-N` sizes without affecting body text).
+- **Intrinsic images fit the remaining space** — an `IMAGE` with no width argument
+  is scaled to the space still free on the current page (contained to the page
+  width and the remaining height) instead of the full content height, so it no
+  longer forces a page break when text precedes it; put it first in the body for a
+  full-page image. A declared width still starts a new page if needed.
+- **Image captions keep the normal text size** — `link-N`/`hint-N` ids were being
+  read as `word-N` size suffixes (`link-1` → size 1), shrinking captions (and any
+  link/hint text) to ~1 pt. `style-size` now only accepts a known style word or
+  family as the base, so ids are ignored; a caption can still set its own size with
+  any `-N` style word (e.g. `[s-8]`, `[m-10]`). The reserved caption height follows
+  the caption's size. The same vocabulary is accepted in a `COLUMN`'s `image […]`
+  clause (and in the column args), so e.g. `image [shadow 3 silver s-8]` sizes
+  every image caption in that column.
 - **Heading line height** — a line's vertical slot is now
   `max(line-height, largest heading size)` via `report-styles/line-advance`, used
   by the header, footer and body in both renderers (and `footer-height` reserves

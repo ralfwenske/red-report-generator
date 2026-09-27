@@ -41,9 +41,12 @@ show-report: func [
     /fit-width
 ][captured-report: report]
 
+; Headless: swallow the samples' `alert error-msg` (nothing to show).
+alert: func [msg [any-type!]][]
+
 ;--- one sample -------------------------------------------------------------
 
-check-sample: func [f [file!] /local path blk start idx prefix e msg pg out skip-next][
+check-sample: func [f [file!] /local path blk start idx suffix-at prefix e msg pg out skip-next][
     path: to-file rejoin ["samples/" f]
     blk: load path
 
@@ -56,14 +59,17 @@ check-sample: func [f [file!] /local path blk start idx prefix e msg pg out skip
     start: 1
     if all [not empty? blk word? blk/1 blk/1 = 'Red block? blk/2][start: 3]
 
-    ; the last top-level expression is the show-report call
+    ; the last top-level expression is the show-report call, usually assigned to a
+    ; variable (error-msg: show-report ...); include that set-word in the suffix
     idx: none
     repeat i length? blk [if show-call? blk/:i [idx: i]]
+    suffix-at: idx
+    if all [idx idx > 1 (type? blk/(idx - 1)) = set-word!][suffix-at: idx - 1]
 
     ; evaluate the data/build expressions: skip the header and #include lines
     prefix: copy []
     skip-next: false
-    repeat i (either idx [idx - 1][length? blk]) [
+    repeat i (either suffix-at [suffix-at - 1][length? blk]) [
         if i < start [continue]
         if skip-next [skip-next: false continue]
         e: blk/:i
@@ -74,8 +80,8 @@ check-sample: func [f [file!] /local path blk start idx prefix e msg pg out skip
 
     ; capture the report block the sample hands to show-report
     captured-report: none
-    either idx [
-        do copy at blk idx
+    either suffix-at [
+        do copy at blk suffix-at
     ][
         captured-report: get/any 'report
     ]

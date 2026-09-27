@@ -4,6 +4,9 @@ Red [
     Level: 2
     Needs: 'View
 ]
+if exists? %samples/ [      ;make sure we are in the script directory
+    change-dir %samples/
+]
 
 code: read/lines %code-viewer.red
 bdy: [ []]
@@ -67,5 +70,6 @@ do-popup: function [
 ]
 
 #include %../libs/report-view.red
-report-view/make-font [s] 11
-show-report/popup report "code-viewer" :do-popup
+report-view/make-font [m] 11
+error-msg: show-report/popup report "code-viewer" :do-popup
+if error-msg <> "" [alert error-msg]

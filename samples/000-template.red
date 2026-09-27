@@ -30,4 +30,5 @@ report: [
 
 #include %../libs/report-view.red
 
-show-report/fit-width report "00 — Template"
+error-msg: show-report/fit-width report "00 — Template"
+if error-msg <> "" [alert error-msg]
