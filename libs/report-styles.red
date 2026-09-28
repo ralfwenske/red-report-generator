@@ -30,7 +30,6 @@ report-styles: context [
     line-height-factor:  1.6
     ; spacing for lines whose largest size is above the base size (headings or
     ; big -N sizes) — lower it if large fonts get too much leading
-    line-height-factor-large: 1.3
     line-height:         to integer! (font-size * line-height-factor)
     base-styles:         copy []   ; global base font styles (see make-font)
     row-padding:          4
@@ -200,6 +199,16 @@ report-styles: context [
     ][
         foreach s styles [if tuple? s [return s]]
         none
+    ]
+
+    opaque-tuple?: func [
+        "True when a tuple is opaque. Red 4-tuples are RGBA (alpha first), so 0.0.0.255 is transparent and must not be painted."
+        c [tuple!]
+    ][
+        case [
+            (length? c) >= 4 [c/1 > 0]
+            true [true]
+        ]
     ]
 
     style-bg-color: func [
@@ -520,6 +529,44 @@ report-styles: context [
         'serif
     ]
 
+    ;=== Text metrics — single source of truth for widths and line/box heights ===
+    ; Each renderer supplies a `metrics` function [text styles] -> [w h ascent]
+    ; (View: OS fonts, PDF: Base-14 AFM). Lines, boxes and columns derive from it.
+
+    line-gap-px: 1        ; vertical gap between consecutive text line boxes
+
+    default-metrics: func [
+        "Fallback metrics (no renderer): size-based estimate -> [width height ascent]"
+        text [string!] styles [block!]
+    ][
+        reduce [
+            max 1 to integer! ((length? text) * font-size * 0.583)
+            max 1 to integer! (font-size * line-height-factor)
+            max 1 to integer! (font-size * 0.72)
+        ]
+    ]
+
+    line-ink: func [
+        "Ink metrics of a line of [value styles] pairs: [height ascent descent]."
+        line-block [block!] metrics [function!]
+        /local best-h best-a best-d m styles text f
+    ][
+        best-h: 0  best-a: 0  best-d: 0
+        f: get/any 'metrics
+        foreach pair line-block [
+            if all [block? pair (length? pair) >= 2 block? pair/2][
+                styles: pair/2
+                text: either string? pair/1 [pair/1][form pair/1]
+                m: do reduce [f text styles]
+                if m/2 > best-h [best-h: m/2]
+                if m/3 > best-a [best-a: m/3]
+                if (m/2 - m/3) > best-d [best-d: m/2 - m/3]
+            ]
+        ]
+        if best-h < 1 [best-h: line-height]
+        reduce [best-h best-a best-d]
+    ]
+
     style-size: func [
         {Explicit size (from a -N suffix on a style word, e.g. i-8 / s-10 / ss-12)
          for a style block, or none. link-N / hint-N ids are not sizes.}
@@ -556,70 +603,62 @@ report-styles: context [
         ]
     ]
 
-    max-style-size: function [
-        "Largest effective font size from style blocks in a line of pairs (0 if none)"
-        line-block [block!]
-    ][
-        best: 0
-        foreach pair line-block [
-            if all [block? pair (length? pair) >= 2 block? pair/2][
-                sz: font-size-for pair/2
-                if sz > best [best: sz]
-            ]
-        ]
-        either best > 0 [best][font-size]
-    ]
-
     line-advance: func [
-        {Vertical slot a line needs: spacing-factor x its largest font size.
-         Above the base size the (tunable) large factor is used. Wrapped visual
-         lines each get their own slot.}
-        line-block [block!]
-        /local sz f
+        {Vertical slot a line occupies: its measured ink height plus the inter-line
+         gap (boxes therefore just touch, separated by the gap).}
+        line-block [block!] metrics [function!]
+        /local lm f
     ][
-        sz: max-style-size line-block
-        f: either sz > font-size [line-height-factor-large][line-height-factor]
-        max 1 to integer! (sz * f)
+        f: get/any 'metrics
+        lm: line-ink line-block :f
+        lm/1 + line-gap-px
     ]
 
-    line-gap: func [
-        {Extra space before a line of size sz when the previous line's size is prev,
-         so consecutive baselines follow the size-dependent spacing factor.
-         Returns 0 when there is no previous line (prev = 0).}
-        sz [integer!] prev [integer!]
-        /local d f m
+    line-step: func [
+        "Baseline distance from `prev` line down to `cur` line (boxes + gap touch)."
+        cur [block!] prev [block! none!] metrics [function!]
+        /local ci pi f
     ][
-        m: max sz prev
-        f: either m > font-size [line-height-factor-large][line-height-factor]
-        d: to integer! ((sz - prev) * f)
-        max 0 d
+        f: get/any 'metrics
+        ci: line-ink cur :f
+        pi: either prev [line-ink prev :f][reduce [0 0 0]]
+        pi/3 + line-gap-px + ci/2
     ]
 
     footer-height: func [
-        "Total vertical space the footer needs (line advances plus inter-line gaps)"
-        ftr [object! none!]
-        /local h line sz prev
+        "Total vertical space the footer needs (stacked line boxes plus gaps)"
+        ftr [object! none!] metrics [function!]
+        /local h line prev-l f lm
     ][
         h: 0
-        prev: 0
+        prev-l: none
+        f: get/any 'metrics
         if all [ftr ftr/lines][
             foreach line ftr/lines [
-                sz: max-style-size line
-                if prev > 0 [h: h + line-gap sz prev]
-                h: h + line-advance line
-                prev: sz
+                either prev-l [
+                    h: h + line-step line prev-l :f
+                ][
+                    lm: line-ink line :f
+                    h: h + lm/2
+                ]
+                prev-l: line
+            ]
+            if prev-l [
+                lm: line-ink prev-l :f
+                h: h + lm/3
             ]
         ]
         h
     ]
 
     row-height: func [
-        "Height for a table row, adapting to largest segment font"
-        row [block!]
-        /local sz
+        "Height for a table row: its measured ink height plus row padding"
+        row [block!] metrics [function!]
+        /local lm f
     ][
-        sz: max-style-size row
-        either sz > font-size [sz + row-padding + 1][line-height + row-padding]
+        f: get/any 'metrics
+        lm: line-ink row :f
+        lm/1 + row-padding
     ]
 
     pad-text: func [
@@ -859,25 +898,27 @@ report-styles: context [
 
     measure-column-pixels: function [
         "Measure max pixel width across all column lines (pair format)"
-        col-rows [block!] img-w [issue! none!]
-        /local mono? mx ln val-w s ch ia ia-obj wd
+        col-rows [block!] img-w [issue! none!] metrics [function!]
+        /local f mx ln pair val sty txt val-w ia ia-obj wd m
     ][
-        mono?: false
-        if all [not empty? col-rows block? col-rows/1][
-            foreach pair col-rows/1 [
-                if all [block? pair (length? pair) >= 2 block? pair/2][
-                    foreach s pair/2 [if s = 'm [mono?: true]]
-                ]
-            ]
-        ]
+        f: get/any 'metrics
         mx: 0
         foreach ln col-rows [
             val-w: 0
             either block? ln [
                 foreach pair ln [
-                    val: pair/1
-                    s: either any [string? val number? val date? val][form val][mold val]
-                    val-w: val-w + to integer! (length? s) * (font-size * 0.583)
+                    either block? pair [
+                        if (length? pair) >= 1 [
+                            val: pair/1
+                            sty: either all [(length? pair) >= 2 block? pair/2][pair/2][copy []]
+                            txt: either any [string? val number? val date?][format-pair-value val sty][mold val]
+                            m: do reduce [f txt sty]
+                            val-w: val-w + m/1
+                        ]
+                    ][
+                        m: do reduce [f (form pair) copy []]
+                        val-w: val-w + m/1
+                    ]
                 ]
             ][
                 either object? ln [
@@ -897,7 +938,8 @@ report-styles: context [
                     ]
                 ][
                     if string? ln [
-                        val-w: to integer! (length? ln) * (font-size * 0.583)
+                        m: do reduce [f ln copy []]
+                        val-w: m/1
                     ]
                 ]
             ]
@@ -969,7 +1011,7 @@ report-styles: context [
          [text [string!] styles [block!]] returning the pixel width.}
         line [block!] avail [integer!] measure [function!]
         /local out cur cw push flush pair val styles box-w tok ww bw sw buf str-start?
-               w chunks ch nls j k blank swidth cch cwid ti tch tw lead room
+               w chunks ch nls j k blank swidth cch cwid ti tch tw lead room pend pend-w
     ][
         out: copy []
         cur: copy []
@@ -998,6 +1040,7 @@ report-styles: context [
                         case [
                             (char-class tok/1) = 3 [
                                 ; explicit newlines: hard break; extra newlines keep blank lines
+                                pend: none   ; spaces before a break are not visible
                                 nls: 0
                                 j: 1
                                 while [j <= length? tok][
@@ -1018,14 +1061,21 @@ report-styles: context [
                                 str-start?: true
                             ]
                             (char-class tok/1) = 2 [
-                                ; space/tab: keep only as indentation at the very start
-                                if all [str-start? empty? buf][
+                                ; space/tab run: kept verbatim as leading indentation, else
+                                ; held as `pend` and re-inserted as a single separator before
+                                ; the next word. A run at the very end of the value is
+                                ; appended verbatim below, so a background color covers it.
+                                either all [str-start? empty? buf][
                                     append buf tok
                                     bw: bw + measure tok styles
+                                ][
+                                    pend: tok
+                                    pend-w: measure tok styles
                                 ]
                             ]
                             true [
                                 ww: measure tok styles
+                                pend: none
                                 lead: either str-start? [0][sw]
                                 room: max 1 (avail - cw)
                                 if all [(not empty? buf) ((bw + lead + ww) > room)][
@@ -1079,6 +1129,12 @@ report-styles: context [
                                 str-start?: false
                             ]
                         ]
+                    ]
+                    ; trailing space/tab run of the value: keep it verbatim so a
+                    ; background color (2nd tuple) extends over it
+                    if all [pend not empty? buf][
+                        append buf pend
+                        bw: bw + pend-w
                     ]
                     if not empty? buf [push reduce [copy buf styles] bw]
                 ]

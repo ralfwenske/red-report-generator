@@ -34,6 +34,13 @@ width, so a perfect match is not possible for them. **For the closest match, use
 mono family (`m`)**: its fixed advance makes widths — and therefore line breaks —
 line up between View and PDF.
 
+## Raw page backgrounds
+
+`[DRAW-BG [ … ]]` paints a raw Red/View draw block behind every page’s header, body
+and footer (spec §3.1). The View window always shows it; for PDF it is rasterized, so
+that step needs the GUI build — a PDF built with the plain console `red` omits the
+background (and warns). An optional integer sets the PDF pixel density (1–8).
+
 ## Check
 
 ```bash

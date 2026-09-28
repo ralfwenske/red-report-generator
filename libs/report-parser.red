@@ -41,7 +41,7 @@ parse-pairs: func [
     result
 ]
 
-known-keywords: [header body footer table image column pagebreak]
+known-keywords: [header body footer table image column pagebreak draw-bg]
 paper-sizes:    [a4 letter legal a3 a5]
 margin-sides:   [top bottom left right margin]
 
@@ -129,6 +129,17 @@ parse-section: func [
                 pos: next pos
                 continue
             ]
+            ; DRAW-BG: optional integer pixel-density arg, then ONE raw draw block
+            if kw-type = 'draw-bg [
+                while [all [not tail? inner not block? inner/1 not paren? inner/1]][
+                    append kw-args inner/1
+                    inner: next inner
+                ]
+                if all [not tail? inner block? inner/1][body: copy inner/1]
+                append/only result object [type: kw-type args: kw-args lines: body]
+                pos: next pos
+                continue
+            ]
             ; args: values up to the first block or paren (the items block)
             while [all [not tail? inner not block? inner/1 not paren? inner/1]][
                 append kw-args inner/1
@@ -191,7 +202,7 @@ parse-section: func [
          BODY is required; HEADER and FOOTER are optional and may appear in any order.
          Default paper is a4 portrait.}
         page [block!]
-        /local items h-args h-lines c-args c-lines f-args f-lines has-body
+        /local items h-args h-lines c-args c-lines f-args f-lines has-body bg-args bg-lines
                size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right
     ][
         ;--- Paper clause: leading size/orientation/margin words or a WxH pair before the items ---
@@ -228,7 +239,7 @@ parse-section: func [
         m-left:   any [l-n m-u 50]
         m-right:  any [r-n m-u 50]
 
-        h-args: h-lines: c-args: c-lines: f-args: f-lines: copy []
+        h-args: h-lines: c-args: c-lines: f-args: f-lines: bg-args: bg-lines: copy []
         has-body: false
 
         items: parse-section/base pos report-styles/base-styles
@@ -239,6 +250,10 @@ parse-section: func [
                     body   [c-args: it/args  c-lines: it/lines  has-body: true]
                     footer [f-args: it/args  f-lines: it/lines]
                 ]
+            ]
+            if all [object? it it/type = 'draw-bg][
+                bg-args: it/args
+                bg-lines: it/lines
             ]
         ]
 
@@ -251,6 +266,7 @@ parse-section: func [
             header:  object [args: h-args lines: h-lines]
             content: object [args: c-args lines: c-lines]
             footer:  object [args: f-args lines: f-lines]
+            draw-bg: object [args: bg-args lines: bg-lines]
         ]
     ]
 
@@ -408,7 +424,7 @@ parse-section: func [
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a
+        /local err pg msg ln i row a bg
     ][
         ;--- Cheap structural pre-check (catches unknown keywords/directives) ---
         msg: page-problem page
@@ -439,6 +455,15 @@ parse-section: func [
             ][
                 return rejoin ["Paper directive '" mold d "' is not a size (a4 letter legal a3 a5), a WxH pair, landscape/portrait, or a margin (top/bottom/left/right|margin-N)"]
             ]
+        ]
+
+        ;--- DRAW-BG (optional): one draw block, optional integer pixel-density arg ---
+        bg: pg/draw-bg
+        unless all [object? bg block? bg/lines][return "DRAW-BG: malformed"]
+        if not empty? bg/lines [
+            if (length? bg/args) > 1 [return "DRAW-BG takes at most one density number"]
+            if all [not empty? bg/args not integer? bg/args/1][return "DRAW-BG density must be an integer"]
+            if all [not empty? bg/args bg/args/1 < 1][return "DRAW-BG density must be 1 or more"]
         ]
 
         ;--- Structural checks per section ---

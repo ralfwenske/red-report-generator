@@ -54,6 +54,7 @@ margin       := top-N | bottom-N | left-N | right-N | margin-N   ; N in points, 
 section-item := [HEADER [items]]            ; optional
               | [BODY   [items]]            ; required
               | [FOOTER [items]]            ; optional
+              | [DRAW-BG density? [draw…]]  ; optional raw page background (§3.1)
 ```
 
 - `BODY` is **required**; `HEADER` and `FOOTER` are optional and may appear in any order.
@@ -89,6 +90,43 @@ report-source/build-report: compose/deep [
     ]]
 ]
 ```
+
+### 3.1 DRAW-BG — raw page background
+
+`DRAW-BG` paints a raw Red/View **draw dialect** block behind `HEADER`, `BODY` and
+`FOOTER` on **every** page:
+
+```red
+[DRAW-BG 3 [
+    pen off
+    fill-pen 238.242.255
+    box 0x0 (as-pair page-width 46)
+]]
+```
+
+- The block after the keyword is the draw dialect, verbatim. It is painted after the
+  page's white background and before all other content, so whatever it draws sits
+  behind the text.
+- An optional integer before the block sets **pixel density** (clamped to 1–8,
+  default 3), used only by the PDF renderer to reduce jaggies; higher is sharper but
+  larger. It is ignored by the View renderer.
+- Parenthesised expressions inside the block are evaluated **once** at render time,
+  with the page geometry in scope: `page-width`, `page-height`, `margin-left`,
+  `margin-right`, `margin-top`, `margin-bottom`. Built-in functions work as usual.
+  Because the renderer performs this evaluation, do **not** wrap the block in your own
+  `compose/deep` — the parentheses must survive until rendering.
+- The block may use anything the View draw dialect supports (`box`, `line`, `circle`,
+  `text`, `image`, `polygon`, `spline`, …). Text painted here is rasterized for PDF
+  output: it is not selectable text.
+- **Headless limitation.** The draw dialect rasterizes only under a GUI-capable Red
+  (`red-view`). Building a PDF with the plain console `red` omits the background and
+  prints a warning; the View window always shows it. `red tests/check.red --pdf`
+  therefore skips `DRAW-BG` for this one sample.
+- There is no `DRAW-FG`: a transparent foreground overlay is not currently
+  expressible because PDF image embedding supports JPEG only (no alpha/`/SMask`).
+
+`DRAW-BG` applies to all pages. To decorate a single page, draw oversized art on a
+one-page report (raw draw is not clipped to the text margins).
 
 ## 4. Items
 
@@ -382,6 +420,11 @@ next line if they do not fit, and a single value cannot be split.
   unaffected.
 - `nowrap` (as a line/value style) disables wrapping for that line; `wrap` is accepted
   as an explicit no-op. Example: `["a long sentence …" [h3 nowrap]]`.
+- **Whitespace is significant at the ends of a value.** Leading and trailing space/tab
+  runs are kept verbatim, so a background color (the second tuple in a style block)
+  extends over them: `["  xyz  " [black yellow]]` paints the whole padded run. Runs
+  *between* words are normalised to a single space for wrapping, and trailing runs do
+  not count toward the wrap decision (they never push a word to the next line).
 
 ## 6. Tables — column specification
 
@@ -539,23 +582,22 @@ report-pdf/make-font/line styles size factor
 styles merge on top, and `!X` drops a base style, so any value can still override
 it locally (`[!m ss]` = sans where the base is mono). Headings scale with the base
 size (`h1` = 2×, `h2` = 1.5×, `h3` = 1.17×; the 12 pt default gives 24/18/14 as
-before). Line spacing is automatic and uniform across header, footer and body:
-consecutive baselines are **`line-height-factor × max(size of the two lines)`**
-(default factor `1.6`), where a line's size is its explicit `-N` size, else its
-heading size, else the base size. So `h1`, `s-24` and plain text all lead
-correctly wherever they are used; a wrapped string's visual lines each take part
-in the same rule. The only exception: there is no gap before the first line of a
-page/block (nothing above it). Tune with `report-view/line-height-factor` /
-`report-pdf/line-height-factor`, or `report-view/make-font/line [m] 11 1.6`; lines
-whose size is above the base size use a second knob,
-`report-view/line-height-factor-large` / `report-pdf/line-height-factor-large`
-(lower it if headings or big `-N` sizes get too much leading).
-A line containing a heading reserves **its own height** (`max(line-height,
-heading-size)`), so a following line can never touch the heading's descenders
-(header, footer and body alike). One call configures the View **and** PDF
-renderers plus the shared `report-styles` copy the parser reads, so calling it on
-either renderer (`report-view/make-font …` or `report-pdf/make-font …`) is
-enough — that keeps column widths and pagination consistent across both.
+before). Line spacing is derived from **measured text**, not from font sizes: each
+renderer supplies a metrics function `text-metrics text styles -> [width height
+ascent]` (View: OS font line box; PDF: Base-14 metrics), and a line's height is the
+largest such `height` among its values. Consecutive baselines are placed so the line
+boxes touch, separated by `line-gap-px` (default 1): the baseline distance from one
+line to the next is `descent(prev) + line-gap-px + ascent(next)`. The same metrics
+size each value's background/frame box, so boxes hug the text and cannot overlap the
+line above, and `h1`/`s-24`/plain text all lead correctly wherever they are used; a
+wrapped string's visual lines each take part in the same rule. The only exception:
+there is no gap before the first line of a page/block (nothing above it). Tune the
+gap with `report-styles/line-gap-px`.
+
+One `make-font` call configures the View **and** PDF renderers plus the shared
+`report-styles` copy the parser reads, so calling it on either renderer
+(`report-view/make-font …` or `report-pdf/make-font …`) is enough — that keeps
+column widths and pagination consistent across both.
 
 Two renderer-specific notes. The PDF uses the **Base-14** fonts only
 (Times/Helvetica/Courier; no embedded fonts), and the View is set to matching

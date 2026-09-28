@@ -325,17 +325,23 @@ Sketch of the first three (content only, to be written during implementation):
   `measure-text`, `report-pdf/line-measure` with `pdf-kit/text-width`), because the
   available width is the page/popup width (known only to the renderer — `show-popup`
   sets it on the viewer) and accurate breaks need real font metrics.
-- **Line spacing** — replaced the additive `line-height-offset` with a
-  multiplicative `line-height-factor` (default `1.6`). Line spacing is automatic
-  and uniform across header/footer/body: the distance between consecutive
-  baselines is `line-height-factor × max(size of the two lines)`, where a line's
-  size is its `-N` size, else its heading size, else the base size (a plain
-  `report-styles/line-advance` slot plus a `line-gap` computed from the previous
-  line's size). No gap is inserted before the first line of a page/block — the
-  only exception. Tune per renderer (`report-view/line-height-factor` /
-  `report-pdf/line-height-factor`) or with `make-font/line`; lines above the base
-  size use a second knob `line-height-factor-large` (e.g. lower it to 1.2 to
-  tighten headings/big `-N` sizes without affecting body text).
+- **Measured line geometry (final)** — superseded the size×`line-height-factor`
+  model (and its `line-height-factor-large` second knob) with metrics-based layout.
+  Each renderer supplies `text-metrics text styles -> [width height ascent]`
+  (`view-metrics` via `size-text`, `pdf-metrics` via Base-14 metrics); shared helpers
+  `line-ink`/`line-step`/`line-advance`/`footer-height`/`row-height` take that
+  function explicitly (Red calls a function-valued word passed as an argument, so it
+  is always passed as `:metrics` or copied via `get/any`). A line's height is the
+  largest measured height among its values; baselines step by
+  `descent(prev) + line-gap-px + ascent(next)`, so line boxes just touch with a
+  configurable `report-styles/line-gap-px` (default 1), and each background/frame box
+  is the value's own measured box — which is what removed the heading/cell overlap.
+  `prev-line` carries the previous line across body calls and after the header, and
+  is cleared on page breaks and after tables/images/columns.
+  Remaining: column auto-width and `#Nch` still use the conservative
+  `font-size * 0.583` estimate (`report-view/col-char-width`,
+  `report-styles/measure-column-pixels`) rather than the metrics function, so mono
+  cells can differ from the drawn text width.
 - **Intrinsic images fit the remaining space** — an `IMAGE` with no width argument
   is scaled to the space still free on the current page (contained to the page
   width and the remaining height) instead of the full content height, so it no
@@ -358,6 +364,28 @@ Sketch of the first three (content only, to be written during implementation):
 
 So `libs/` is no longer byte-identical to the predecessor: `report-styles.red`,
 `report-view.red` and `report-pdf.red` carry the fixes above.
+
+- **`DRAW-BG`** — an optional raw Red/View draw block (`[DRAW-BG density? [draw…]]`,
+  spec §3.1) painted behind every page. `report-parser.red` parses it into
+  `pg/draw-bg` (`args`, `lines`) and validates the optional integer density.
+  `report-view.red` appends the composed block to every page's draw block;
+  `report-pdf.red` rasterizes it once with `draw-works?`/`render-draw-bg` and stamps
+  the resulting JPEG XObject onto every page. Parens are evaluated by the renderer
+  against the page geometry (`page-width`, margins), so the sample must *not*
+  pre-compose the block. Three findings shaped this:
+  - headless console Red has a `draw` word that silently **no-ops**, so capability is
+    probed by drawing a 4×4 test image and checking the pixel changed;
+  - `draw`'s `scale` command does not scale reliably in this build, so the PDF path
+    rasterizes at page resolution and upscales with `draw [image src 0x0 size]`
+    (the density argument controls that upscale);
+  - `pdf-kit` embeds JPEG only (no alpha/`/SMask`), so there is no transparent
+    `DRAW-FG` and no vector translation of draw output.
+- **End whitespace is preserved** — `wrap-line` used to keep space/tab runs only as
+  leading indentation, dropping trailing ones, so a background color
+  (`["  xyz  " [black yellow]]`) stopped at the visible glyphs. Trailing runs are now
+  kept verbatim while still being excluded from the wrap decision; runs *between*
+  words stay normalised to a single space. `size-text/with` (View) and the PDF metrics
+  both count the spaces, so the background box grows to match.
 
 Also learned while implementing: Red changes the working directory to the
 top-level script's own directory, so the sampler's `%samples/` resolves from any

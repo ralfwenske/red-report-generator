@@ -69,7 +69,7 @@ view/flags [
             src/text: read f
             modified: false
         ]
-        react [face/size/y: face/parent/size/y - 160]
+        react [face/size/y: face/parent/size/y - 230]
 
     src: area 660x560 wrap font-name "Fixedsys" 
         on-dbl-click [
@@ -96,11 +96,11 @@ view/flags [
             ]
         ]
         on-key [modified: true]
-        react [src/size: (src/parent/size - 280x160) ]
+        react [src/size: (src/parent/size - 270x230) ]
     return
 
 
-    button "Quit"  [quit] react [face/offset: face/parent/size - 80x40]
+    button "Quit"  [quit] react [face/offset: face/parent/size - 70x40]
 
     do [
         if not empty? names [

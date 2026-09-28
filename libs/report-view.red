@@ -58,7 +58,8 @@ report-view: make report-styles [
     page-num: 0
     total-pages: 0
     pages: copy []
-    prev-line-size: 0   ; largest font size of the previously drawn body line
+    prev-line: none     ; previously drawn line (metrics-based baseline stepping)
+    bg-cmds: copy []    ; DRAW-BG draw commands (applied to every page)
     current-hdr: none
     current-ftr: none
     date-str: ""
@@ -135,6 +136,22 @@ report-view: make report-styles [
         to integer! sz/y
     ]
 
+    view-metrics: func [
+        "Measure text under a style block: [width height ascent] in px (View/OS fonts)"
+        text [string!] styles [block!]
+        /local any-style? sz h a
+    ][
+        any-style?: any [
+            style-has styles 'b  style-has styles 'i  style-has styles 'u
+            style-nondefault-font? styles
+        ]
+        sz: font-size-for styles
+        either any-style? [set-font styles sz][set-font [] font-size]
+        h: to integer! second size-text/with measure-face "hg"   ; ascender + descender
+        a: to integer! second size-text/with measure-face "h"    ; ascender
+        reduce [measure-text text h a]
+    ]
+
     safe-file-stem: func [
         "Reduce a report title to a safe single-segment file stem (no path traversal)."
         s [string!]
@@ -202,7 +219,7 @@ report-view: make report-styles [
     measure-column-pixels: func [
         "Measure max pixel width across column rows (pair format), style-aware"
         col-rows [block!] col-styles [block!] img-w [issue! none!]
-        /local mx ln pair val-w val s ia ia-obj wd
+        /local mx ln pair val sty txt val-w ia ia-obj wd m
     ][
         mx: 0
         foreach ln col-rows [
@@ -212,11 +229,14 @@ report-view: make report-styles [
                     either block? pair [
                         if (length? pair) >= 1 [
                             val: pair/1
-                            s: either any [string? val number? val date? val][form val][mold val]
-                            if not empty? s [val-w: val-w + to integer! (length? s) * col-char-width col-styles]
+                            sty: either all [(length? pair) >= 2 block? pair/2][merge-styles col-styles pair/2][copy col-styles]
+                            txt: either any [string? val number? val date?][format-pair-value val sty][mold val]
+                            m: view-metrics txt sty
+                            val-w: val-w + m/1
                         ]
                     ][
-                        val-w: val-w + to integer! (length? form pair) * col-char-width col-styles
+                        m: view-metrics (form pair) col-styles
+                        val-w: val-w + m/1
                     ]
                 ]
             ][
@@ -237,7 +257,10 @@ report-view: make report-styles [
                         ]
                     ]
                 ][
-                    if string? ln [val-w: to integer! (length? ln) * col-char-width col-styles]
+                    if string? ln [
+                        m: view-metrics ln col-styles
+                        val-w: m/1
+                    ]
                 ]
             ]
             if val-w > mx [mx: val-w]
@@ -369,27 +392,30 @@ report-view: make report-styles [
         dx [integer!] dy [integer!] fh [integer!] tw [integer!]
         text [string!] fg [tuple!] styles [block!]
         link-id hint-id
+        bt [integer!] bb [integer!]                    ; background/frame box top & bottom
         /local bg fc ul-x lid hid txt ut ul-y dd dashes         ; <-- add aliases
     ][
         bg: style-bg-color styles
         fc: style-frame-color styles
+        if all [bg not opaque-tuple? bg][bg: none]
+        if all [fc not opaque-tuple? fc][fc: none]
 
         if fc [
             append page-draw compose [
                 fill-pen (fc) pen off
-                box (as-pair dx (dy - fh - 2)) (as-pair (dx + tw) (dy + 4))
+                box (as-pair dx bt) (as-pair (dx + tw) bb)
             ]
         ]
         if bg [
             either fc [
                 append page-draw compose [
                     fill-pen (bg) pen off
-                    box (as-pair (dx + 2) (dy - fh)) (as-pair (dx + tw - 2) (dy + 2))
+                    box (as-pair (dx + 2) (bt + 2)) (as-pair (dx + tw - 2) (bb - 2))
                 ]
             ][
                 append page-draw compose [
                     fill-pen (bg) pen off
-                    box (as-pair dx (dy - fh - 2)) (as-pair (dx + tw) (dy + 4))
+                    box (as-pair dx bt) (as-pair (dx + tw) bb)
                 ]
             ]
         ]
@@ -431,7 +457,8 @@ report-view: make report-styles [
         x [integer!] y [integer!] text [string!]
         col-w-arg [integer!] align [string!] styles [block!]
         /join "Continue from join-x/join-y position"
-        /local any-style? wpx seg-w n fg sz fh tw dx dy link-id hint-id ascent
+        /local any-style? wpx seg-w n fg sz fh tw dx dy link-id hint-id ascent m bt bb
+               fam btop bbot
     ][
         if (length? text) = 0 [exit]
 
@@ -444,12 +471,21 @@ report-view: make report-styles [
         fg: any [style-fg-color styles 0.0.0]
         sz: font-size-for styles
 
-        either any-style? [set-font styles sz][set-font [] font-size]
-        fh: measure-height
-        ; Draw text anchors TOP-LEFT, so to baseline-align mixed font sizes we
-        ; offset each segment by (font size + 4) so every baseline lands on the
-        ; same dy (the serif font's top-to-baseline gap is ~size + a constant).
-        tw: measure-text text
+        ; one measurement drives the text, the baseline offset and the box
+        m: view-metrics text styles
+        tw: m/1                 ; advance width
+        fh: m/2                 ; ink height (ascender + descender)
+        ascent: m/3             ; ascender above the baseline
+
+        ; per-family box tweaks (box only; the metrics above still drive layout)
+        fam: style-family styles
+        btop: 0  bbot: 0
+        case [
+            fam = 'mono [btop: -3  bbot: -2]   ; shifted 1px further up
+            fam = 'sans [btop: -2  bbot: -1]   ; shifted 1px further up
+            true       [bbot: -1]              ; serif: 1px gap above the next row
+        ]
+
         ; width box: #Npx is literal; a bare integer or #Nch means N average
         ; characters of this style/font (the alphabet average, not the value text)
         wpx: style-width-px styles
@@ -458,7 +494,6 @@ report-view: make report-styles [
             if n > 0 [wpx: to integer! (n * avg-char-width styles sz)]
         ]
         seg-w: either wpx > tw [wpx][tw]
-        ascent: current-font/size + 4
 
         link-id: none
         hint-id: none
@@ -479,8 +514,10 @@ report-view: make report-styles [
             ]
             dy: to-draw-y join-y
 
-            _emit-text-decorations dx dy fh tw text fg styles link-id hint-id
+            bt: dy - ascent + btop
+            bb: dy - ascent + fh + bbot
 
+            _emit-text-decorations dx dy fh tw text fg styles link-id hint-id bt bb
             append page-draw compose [
                 pen (fg) font (current-font)
                 text (as-pair dx (dy - ascent)) (text)
@@ -496,8 +533,10 @@ report-view: make report-styles [
             ]
             dy: to-draw-y y
 
-            _emit-text-decorations dx dy fh tw text fg styles link-id hint-id
+            bt: dy - ascent + btop
+            bb: dy - ascent + fh + bbot
 
+            _emit-text-decorations dx dy fh tw text fg styles link-id hint-id bt bb
             append page-draw compose [
                 pen (fg) font (current-font)
                 text (as-pair dx (dy - ascent)) (text)
@@ -570,18 +609,16 @@ report-view: make report-styles [
         hdr [object! none!] y-pos [integer!]
         d-str [string!] t-str [string!] dt-str [string!]
         /tokens pn [integer!] tp [integer!]
-        /local line sz prev
+        /local line prev-l
     ][
         if none? hdr [return y-pos]
-        prev: 0
+        prev-l: none
         foreach line hdr/lines [
-            sz: max-style-size line
-            if prev > 0 [y-pos: y-pos - line-gap sz prev]
+            if prev-l [y-pos: y-pos - line-step line prev-l :view-metrics]
             if tokens [
                 draw-header-pairs/default-style y-pos line pn tp d-str t-str dt-str ['b]
             ]
-            y-pos: y-pos - line-advance line
-            prev: sz
+            prev-l: line
         ]
         if tokens [set-font [] font-size]
         y-pos
@@ -591,28 +628,21 @@ report-view: make report-styles [
         "Render footer block at bottom of page"
         ftr [object! none!] pn [integer!] tp [integer!]
         d-str [string!] t-str [string!] dt-str [string!]
-        /local ftr-y line advs gaps ys i sz prev cur
+        /local line ys i n lm
     ][
-        if none? ftr [exit]
-        ; lines stack upward from margin-bottom with the same inter-line gaps
-        advs: copy []
-        gaps: copy []
-        prev: 0
-        foreach line ftr/lines [
-            sz: max-style-size line
-            append advs line-advance line
-            append gaps either prev > 0 [line-gap sz prev][0]
-            prev: sz
-        ]
+        if any [none? ftr empty? ftr/lines] [exit]
+        ; stack line boxes upward from margin-bottom: place each baseline from its
+        ; descent, then step up by the distance between consecutive baselines
+        n: length? ftr/lines
         ys: copy []
-        cur: margin-bottom
-        i: length? ftr/lines
-        while [i >= 1][
-            append ys cur
-            if i > 1 [cur: cur + (pick gaps i) + (pick advs (i - 1))]
+        repeat k n [append ys 0]
+        lm: line-ink (pick ftr/lines n) :view-metrics
+        poke ys n (margin-bottom + lm/3)
+        i: n
+        while [i > 1][
+            poke ys (i - 1) ((pick ys i) + line-step (pick ftr/lines i) (pick ftr/lines (i - 1)) :view-metrics)
             i: i - 1
         ]
-        ys: reverse ys
         i: 0
         foreach line ftr/lines [
             i: i + 1
@@ -740,6 +770,8 @@ report-view: make report-styles [
 
                 cell-bg: style-bg-color final-styles
                 cell-fc: style-frame-color final-styles
+                if all [cell-bg not opaque-tuple? cell-bg][cell-bg: none]
+                if all [cell-fc not opaque-tuple? cell-fc][cell-fc: none]
                 if cell-fc [
                     append page-draw compose [
                         fill-pen (cell-fc) pen off
@@ -799,10 +831,12 @@ report-view: make report-styles [
         hotspots: copy []
         page-num: page-num + 1
         page-draw: compose [fill-pen white pen off box 0x0 (as-pair page-width page-height)]
+        if not empty? bg-cmds [append page-draw bg-cmds]
         set-font [] font-size
         page-y: usable-top
-        prev-line-size: 0
+        prev-line: none
         page-y: draw-header current-hdr page-y date-str time-str datetime-str
+        prev-line: if all [current-hdr not empty? current-hdr/lines][last current-hdr/lines][none]
     ]
 
     ;=== Extracted content emitters ===
@@ -810,18 +844,18 @@ report-view: make report-styles [
     _emit-pairs: func [
         "Render pairs line from content (word-wrapped to the content width)"
         line [block!]
-        /local adv lines l sz
+        /local lines l lm
     ][
         lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
         foreach l lines [
-            sz: max-style-size l
-            ; keep consecutive baselines factor x max(prev, cur) apart
-            if prev-line-size > 0 [page-y: page-y - line-gap sz prev-line-size]
-            adv: line-advance l
-            if (page-y - adv) < page-bottom [new-page]
+            if prev-line [page-y: page-y - line-step l prev-line :view-metrics]
+            lm: line-ink l :view-metrics
+            if (page-y - lm/3) < page-bottom [
+                new-page
+                if prev-line [page-y: page-y - line-step l prev-line :view-metrics]
+            ]
             draw-pairs-line l page-y
-            page-y: page-y - adv
-            prev-line-size: sz
+            prev-line: l
         ]
     ]
 
@@ -853,7 +887,7 @@ report-view: make report-styles [
         first-h: either all [object? first-data first-data/type = 'pagebreak][
             row-h
         ][
-            either first-data [row-height first-data][row-h]
+            either first-data [row-height first-data :view-metrics][row-h]
         ]
         if (page-y - row-h - first-h - line-height) < page-bottom [new-page]
 
@@ -874,13 +908,13 @@ report-view: make report-styles [
                 draw-table-row page-y row-h table-left table-width boxed? alt? true 0 col-info []
                 page-y: page-y - row-h
             ][
-                row-h: row-height row-item
+                row-h: row-height row-item :view-metrics
                 if (page-y - row-h) < page-bottom [
                     new-page
                     row-h: header-row-h
                     draw-table-row page-y row-h table-left table-width boxed? alt? true 0 col-info []
                     page-y: page-y - row-h
-                    row-h: row-height row-item
+                    row-h: row-height row-item :view-metrics
                 ]
 
                 row-num: row-num + 1
@@ -910,7 +944,7 @@ report-view: make report-styles [
                 decl-w: image-declared-width ia cap-info
                 aspect: to float! img-obj/size/y / img-obj/size/x
                 cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
-                cap-h: either img-cap [line-advance cap-line][0]
+                cap-h: either img-cap [line-advance cap-line :view-metrics][0]
                 ; reserve the caption line + the line below so the whole block fits the page
                 avail-w: max 1 (page-width - margin-left - margin-right)
                 avail-full: max 1 (usable-top - page-bottom - line-height - cap-h)
@@ -1217,7 +1251,7 @@ report-view: make report-styles [
     generate: func [
         "Generate a multi-page report using draw dialect. Returns block of draw blocks."
         page-obj [object!] "Parsed page from parse-report"
-        /local first-line first-sz line paper ascent
+        /local first-line first-sz line paper ascent lm
     ][
         current-hdr: page-obj/header
         current-ftr: page-obj/footer
@@ -1242,35 +1276,48 @@ report-view: make report-styles [
             all [current-hdr  not empty? current-hdr/lines  current-hdr/lines/1]
             all [page-obj/content  not empty? page-obj/content/lines  block? page-obj/content/lines/1  page-obj/content/lines/1]
         ]
-        ; place the top of the first line at margin-top: reserve its ascent
-        ascent: font-size + 4
+        ; place the top of the first line at margin-top: reserve its measured ascent
+        lm: default-metrics "Hg" copy []
+        ascent: lm/3
         if first-line [
-            first-sz: max-style-size first-line
-            set-font [] first-sz
-            ascent: current-font/size + 4
-            set-font [] font-size
+            lm: line-ink first-line :view-metrics
+            ascent: lm/2
         ]
         usable-top: page-height - margin-top - ascent
         ; reserve the full footer (all its lines, incl. a leading empty line)
-        page-bottom: margin-bottom + footer-height current-ftr
+        page-bottom: margin-bottom + footer-height current-ftr :view-metrics
 
         date-str: form now/date
         time-str: copy/part form now/time ((length? form now/time) - 3)
         datetime-str: rejoin [date-str " " time-str]
 
+        ; DRAW-BG: evaluate its parens once (page-width/height, margins are in scope)
+        bg-cmds: copy []
+        if all [object? page-obj/draw-bg not empty? page-obj/draw-bg/lines][
+            bg-cmds: compose/deep bind copy page-obj/draw-bg/lines report-view
+        ]
+
         pages: copy []
         page-draw: compose [fill-pen white pen off box 0x0 (as-pair page-width page-height)]
+        if not empty? bg-cmds [append page-draw bg-cmds]
         page-hotspots: copy []
         hotspots: copy []
         page-num: 1
         set-font [] font-size
 
         page-y: usable-top
-        prev-line-size: 0
+        prev-line: none
         page-y: draw-header current-hdr page-y date-str time-str datetime-str
+        prev-line: if all [current-hdr not empty? current-hdr/lines][last current-hdr/lines][none]
 
         foreach line page-obj/content/lines [
             either object? line [
+                ; step past the preceding text line box before stacking a block
+                if prev-line [
+                    lm: line-ink prev-line :view-metrics
+                    page-y: page-y - lm/2 - line-gap-px
+                ]
+                prev-line: none
                 switch line/type [
                     table     [_emit-table line]
                     image     [_emit-image line]
@@ -1283,6 +1330,7 @@ report-view: make report-styles [
                         ]
                     ]
                 ]
+                prev-line: none
             ][
                 if block? line [_emit-pairs line]
             ]

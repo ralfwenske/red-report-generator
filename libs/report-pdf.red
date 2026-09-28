@@ -17,10 +17,21 @@ report-pdf: make report-styles [
     ;=== Typography (aligned with report-view for matching pagination) ===
     font-size:           12
     ; Per-family multipliers; PDF sizes may be fractional, so this is the fine
-    ; parity knob against the View's whole-point serif/sans/mono sizes.
+    ; parity knob against the View's whole-point serif/sans/mono sizes. These
+    ; scale glyph *advances* only (width / wrapping / column measurement).
     font-scale-serif:   1.32 ;  1.1312 / 0.84
     font-scale-sans:    1.38 ;  1.125 / 0.84
     font-scale-mono:    1.4 ;  1.131 / 0.84
+
+    ; Per-family line-box factors for the PDF's Base-14 faces, applied to the
+    ; *nominal* size (base or heading) — not to the glyph-scaled size. The View
+    ; measures its OS font's line box (ascender+descender at 96 dpi) for the same
+    ; nominal size; these reproduce that box so lines and background boxes share
+    ; one geometry across both renderers. Calibrated against the View's measured
+    ; `size-text` heights (serif h2/h3 24/18/14 -> 36/28/22; mono/sans -> 17 at 12).
+    line-scale-serif:   1.56
+    line-scale-sans:    1.4
+    line-scale-mono:    1.4
 
     ;=== PDF font numbers (order matches pdf-kit/font-names) ===
 
@@ -340,6 +351,34 @@ report-pdf: make report-styles [
         ]
     ]
 
+    font-line-scale-for: func [
+        "Per-family line-box factor for a style block, applied to the nominal size."
+        styles [block!]
+        /local fam
+    ][
+        fam: style-family styles
+        case [
+            fam = 'mono [line-scale-mono]
+            fam = 'sans [line-scale-sans]
+            true        [line-scale-serif]
+        ]
+    ]
+
+    font-ascent-for: func [
+        {Base-14 glyph ascender as a fraction of the glyph-scaled size: the distance
+         from the line-box top to the baseline, used to place text like the View
+         (which draws from the line-box top rather than from a baseline).}
+        styles [block!]
+        /local fam
+    ][
+        fam: style-family styles
+        case [
+            fam = 'mono [0.629]   ; Courier ascender
+            fam = 'sans [0.718]   ; Helvetica ascender
+            true        [0.683]   ; Times ascender
+        ]
+    ]
+
     line-measure: func [
         "Pixel width of text under a style block (for word wrap)."
         text [string!] styles [block!]
@@ -352,6 +391,30 @@ report-pdf: make report-styles [
         fno: either any-style? [font-for-styles styles][regular-font]
         sz: (font-size-for styles) * font-scale-for styles
         pdf-kit/text-width fno sz text
+    ]
+
+    pdf-metrics: func [
+        "Measure text under a style block: [width height ascent] in pts (Base-14 AFM)"
+        text [string!] styles [block!]
+        /local any-style? fno sz h
+    ][
+        any-style?: any [
+            style-has styles 'b  style-has styles 'i  style-has styles 'u
+            style-nondefault-font? styles
+        ]
+        fno: either any-style? [font-for-styles styles][regular-font]
+        ; advance width uses the glyph-scaled size (matches the View's advances)
+        sz: (font-size-for styles) * font-scale-for styles
+        ; line box uses the *nominal* size and the family line factor, mirroring the
+        ; View's measured `size-text` line height; ascent = height (the View reports
+        ; no separate descent), so baselines, boxes and header/first-line spacing
+        ; all line up between the two renderers
+        h: max 1 to integer! round ((font-size-for styles) * font-line-scale-for styles)
+        reduce [
+            pdf-kit/text-width fno sz text
+            h
+            h
+        ]
     ]
 
     emit-styled-text: function [
@@ -368,8 +431,10 @@ report-pdf: make report-styles [
             style-nondefault-font? styles
         ]
         bg: style-bg-color styles
+        if all [bg not opaque-tuple? bg][bg: none]
         fg: style-fg-color styles
         fc: style-frame-color styles
+        if all [fc not opaque-tuple? fc][fc: none]
         sz: (font-size-for styles) * font-scale-for styles
         font-no: either any-style? [font-for-styles styles][regular-font]
         ut: style-underline-type/explicit styles
@@ -382,6 +447,32 @@ report-pdf: make report-styles [
             if n > 0 [wpx: to integer! (n * avg-char-width font-no sz)]
         ]
 
+        mm: pdf-metrics text styles
+        hh: mm/2
+        ascr: mm/3
+        desc: hh - ascr
+        ; text baseline: the View draws each value from the line-box top; the PDF
+        ; draws from a baseline, so lift it by the font's ascender. Bold/heading
+        ; faces sit a few px below the View's line-box top, so push back down by that
+        ; leading (measured: h1/h2/h3 -> 7/6/4px). Boxes below stay anchored to `y`,
+        ; keeping background/frame geometry identical to the View.
+        lead: either any [style-has styles 'b  (style-heading styles) > 0][
+            to integer! round ((font-size-for styles) * 0.31)
+        ][0]
+        base: y + hh - (sz * font-ascent-for styles) - lead
+        ; per-family box insets — identical to the View renderer so a background/
+        ; frame box hugs the text the same way in both outputs (box height becomes
+        ; `ascent + bbot - btop`, i.e. the View's `fh + bbot - btop`)
+        fam: style-family styles
+        btop: 0  bbot: 0
+        case [
+            fam = 'mono [btop: -3  bbot: -2]
+            fam = 'sans [btop: -2  bbot: -1]
+            true       [bbot: -1]
+        ]
+        bdesc: desc + bbot
+        bh: hh + bbot - btop
+
         either join [
             tw: pdf-kit/text-width font-no sz text
             jx0: jx
@@ -390,17 +481,17 @@ report-pdf: make report-styles [
                 all [wpx > tw align = "R"][jx0 + wpx - tw]
                 true [jx0]
             ]
-            if fc [emit out [pdf-kit/rgb fc " rg " (pdf-kit/num tx0) " " (pdf-kit/num (y - 5)) " " (pdf-kit/num tw) " " (pdf-kit/num (sz + 4)) " re f"]]
+            if fc [emit out [pdf-kit/rgb fc " rg " (pdf-kit/num tx0) " " (pdf-kit/num (y - bdesc)) " " (pdf-kit/num tw) " " (pdf-kit/num bh) " re f"]]
             if bg [
                 either fc [
-                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num (tx0 + 2)) " " (pdf-kit/num (y - 3)) " " (pdf-kit/num (tw - 4)) " " (pdf-kit/num sz) " re f"]
+                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num (tx0 + 2)) " " (pdf-kit/num (y - bdesc + 2)) " " (pdf-kit/num (tw - 4)) " " (pdf-kit/num (bh - 4)) " re f"]
                 ][
-                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num tx0) " " (pdf-kit/num (y - 5)) " " (pdf-kit/num tw) " " (pdf-kit/num (sz + 4)) " re f"]
+                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num tx0) " " (pdf-kit/num (y - bdesc)) " " (pdf-kit/num tw) " " (pdf-kit/num bh) " re f"]
                 ]
             ]
             set-jx tx0
-            emit-text-join out y text font-no sz (either fg [fg][none])
-            pdf-underline out tx0 y tw ut
+            emit-text-join out base text font-no sz (either fg [fg][none])
+            pdf-underline out tx0 base tw ut
             if wpx > tw [set-jx jx0 + wpx]
         ][
             tw: pdf-kit/text-width font-no sz text
@@ -411,16 +502,16 @@ report-pdf: make report-styles [
                 align = "R" [x + col-w - tw]
                 true [x]
             ]
-            if fc [emit out [pdf-kit/rgb fc " rg " (pdf-kit/num ax) " " (pdf-kit/num (y - 5)) " " (pdf-kit/num tw) " " (pdf-kit/num (sz + 4)) " re f"]]
+            if fc [emit out [pdf-kit/rgb fc " rg " (pdf-kit/num ax) " " (pdf-kit/num (y - bdesc)) " " (pdf-kit/num tw) " " (pdf-kit/num bh) " re f"]]
             if bg [
                 either fc [
-                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num (ax + 2)) " " (pdf-kit/num (y - 3)) " " (pdf-kit/num (tw - 4)) " " (pdf-kit/num sz) " re f"]
+                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num (ax + 2)) " " (pdf-kit/num (y - bdesc + 2)) " " (pdf-kit/num (tw - 4)) " " (pdf-kit/num (bh - 4)) " re f"]
                 ][
-                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num ax) " " (pdf-kit/num (y - 5)) " " (pdf-kit/num tw) " " (pdf-kit/num (sz + 4)) " re f"]
+                    emit out [pdf-kit/rgb bg " rg " (pdf-kit/num ax) " " (pdf-kit/num (y - bdesc)) " " (pdf-kit/num tw) " " (pdf-kit/num bh) " re f"]
                 ]
             ]
-            emit-text-op out ax y text font-no sz (either fg [fg][none]) none none
-            pdf-underline out ax y tw ut
+            emit-text-op out ax base text font-no sz (either fg [fg][none]) none none
+            pdf-underline out ax base tw ut
         ]
     ]
     ;=== Content/header/footer line renderers (pair format) ===
@@ -481,15 +572,13 @@ report-pdf: make report-styles [
         /tokens pn [integer!] tp [integer!]
     ][
         if none? hdr [return page-y]
-        prev: 0
+        prev-l: none
         foreach line hdr/lines [
-            sz: max-style-size line
-            if prev > 0 [page-y: page-y - line-gap sz prev]
+            if prev-l [page-y: page-y - line-step line prev-l :pdf-metrics]
             if tokens [
                 render-header-pairs/default-style out page-y line pn tp date-str time-str datetime-str ['b]
             ]
-            page-y: page-y - line-advance line
-            prev: sz
+            prev-l: line
         ]
         if tokens [emit-font out regular-font]
         page-y
@@ -500,26 +589,19 @@ report-pdf: make report-styles [
         out [string!] ftr [object! none!] page-num [integer!] total-pages [integer!]
         date-str [string!] time-str [string!] datetime-str [string!]
     ][
-        if none? ftr [exit]
-        ; lines stack upward from margin-bottom with the same inter-line gaps
-        advs: copy []
-        gaps: copy []
+        if any [none? ftr empty? ftr/lines] [exit]
+        ; stack line boxes upward from margin-bottom: each baseline from its descent,
+        ; then step up by the distance between consecutive baselines
+        n: length? ftr/lines
         ys: copy []
-        prev: 0
-        foreach line ftr/lines [
-            sz: max-style-size line
-            append advs line-advance line
-            append gaps either prev > 0 [line-gap sz prev][0]
-            prev: sz
-        ]
-        cur: margin-bottom
-        i: length? ftr/lines
-        while [i >= 1][
-            append ys cur
-            if i > 1 [cur: cur + (pick gaps i) + (pick advs (i - 1))]
+        repeat k n [append ys 0]
+        lm: line-ink (pick ftr/lines n) :pdf-metrics
+        poke ys n (margin-bottom + lm/3)
+        i: n
+        while [i > 1][
+            poke ys (i - 1) ((pick ys i) + line-step (pick ftr/lines i) (pick ftr/lines (i - 1)) :pdf-metrics)
             i: i - 1
         ]
-        ys: reverse ys
         i: 0
         foreach line ftr/lines [
             i: i + 1
@@ -620,6 +702,8 @@ report-pdf: make report-styles [
 
                 cell-bg: style-bg-color final-styles
                 cell-fc: style-frame-color final-styles
+                if all [cell-bg not opaque-tuple? cell-bg][cell-bg: none]
+                if all [cell-fc not opaque-tuple? cell-fc][cell-fc: none]
                 if cell-fc [
                     append out rejoin [
                         (pdf-kit/rgb cell-fc) " rg "
@@ -716,8 +800,51 @@ report-pdf: make report-styles [
         ]
         true
     ]
+    emit-page-bg: function [
+        "Emit PDF code placing an already-embedded image across the whole page"
+        out [string!] key [word!] w [integer!] h [integer!]
+    ][
+        append out rejoin [
+            "q " (pdf-kit/num w) " 0 0 " (pdf-kit/num h) " 0 0 cm /" key " Do Q" lf
+        ]
+    ]
+    draw-works?: function [
+        "True only when raw draw actually rasterizes (i.e. inside Red/View)"
+        /local img before
+    ][
+        unless value? 'draw [return false]
+        img: make image! reduce [4x4 black]
+        before: img/1
+        attempt [draw img [fill-pen 255.0.0 box 0x0 4x4]]
+        img/1 <> before
+    ]
+    render-draw-bg: function [
+        "Rasterize a raw DRAW-BG block at pixel-density into a JPEG XObject; returns key or none"
+        cmds [block!] density [integer!] w [integer!] h [integer!]
+        /local img base body tmp key dw dh
+    ][
+        ; raw draw exists only in Red/View; inside headless Red this returns none
+        unless draw-works? [return none]
+        body: compose/deep bind copy cmds report-pdf
+        ; draw the background at page resolution, then upscale the raster to the
+        ; requested density (draw's own `scale` command is unreliable here)
+        base: make image! reduce [as-pair w h white]
+        draw base body
+        img: base
+        if density > 1 [
+            dw: w * density
+            dh: h * density
+            img: make image! reduce [as-pair dw dh white]
+            draw img compose [image (base) 0x0 (as-pair dw dh)]
+        ]
+        tmp: to file! rejoin [what-dir %.draw-bg-.jpg]
+        save/as tmp img 'jpeg
+        key: pdf-kit/embed-image tmp
+        if exists? tmp [delete tmp]
+        key
+    ]
     col-row-height: func [
-        "Vertical space consumed by one column row (text line = line-height; image = uniform img-row-h)"
+        "Vertical space consumed by one column row (text line = line-height; image = the uniform img-row-h)"
         row [block! object!] col-w [integer!] col-styles [block! none!] img-row-h [integer!]
         /local
     ][
@@ -744,7 +871,7 @@ report-pdf: make report-styles [
                 img-cap: ci/1
                 cap-styles: ci/5
                 cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
-                cap-h: either img-cap [line-advance cap-line][0]
+                cap-h: either img-cap [line-advance cap-line :pdf-metrics][0]
                 asp: to float! img/size/y / img/size/x
                 ch: max 1 (img-row-h - line-height - cap-h)
                 base-w: either col-img-w [width-to-px col-img-w 'px][
@@ -797,17 +924,16 @@ report-pdf: make report-styles [
                 either block? ctn/lines/1 [ctn/lines/1][none]
             ][none]
         ]
-        ; place the top of the first line at margin-top: reserve its glyph ascent
-        ascent: to integer! (font-size * 0.72)
+        ; place the top of the first line at margin-top: reserve its measured ascent
+        lm: default-metrics "Hg" copy []
+        ascent: max 1 lm/3
         if first-line [
-            first-sz: max-style-size first-line
-            first-styles: either all [block? first-line not empty? first-line block? first-line/1/2][first-line/1/2][copy []]
-            first-scale: font-scale-for first-styles
-            ascent: to integer! (first-sz * first-scale * 0.72)
+            lm: line-ink first-line :pdf-metrics
+            ascent: max 1 lm/2
         ]
-        usable-top: page-height - margin-top - (max 1 ascent)
+        usable-top: page-height - margin-top - ascent
         ; reserve the full footer (all its lines, incl. a leading empty line)
-        page-bottom: margin-bottom + footer-height ftr
+        page-bottom: margin-bottom + footer-height ftr :pdf-metrics
 
         date-str: form now/date
         time-str: copy/part form now/time ((length? form now/time) - 3)
@@ -817,24 +943,46 @@ report-pdf: make report-styles [
         page-num: 1
         page-content: copy ""
 
+        ; DRAW-BG: rasterize once (View only) and stamp it onto every page
+        bg-key: none
+        if all [object? page-obj/draw-bg not empty? page-obj/draw-bg/lines][
+            bg-density: 3
+            if not empty? page-obj/draw-bg/args [bg-density: page-obj/draw-bg/args/1]
+            bg-density: max 1 min 8 bg-density
+            bg-key: attempt [render-draw-bg page-obj/draw-bg/lines bg-density page-width page-height]
+            unless bg-key [
+                print "Warning: DRAW-BG ignored (raw draw is only available in Red/View)"
+            ]
+        ]
+        if bg-key [emit-page-bg page-content bg-key page-width page-height]
+
         emit-font page-content regular-font
 
         page-y: usable-top
-        prev-line-size: 0
+        prev-line: none
         page-y: emit-header page-content hdr page-y date-str time-str datetime-str
+        prev-line: if all [hdr not empty? hdr/lines][last hdr/lines][none]
 
         new-page: does [
             append pages page-content
             page-num: page-num + 1
             page-content: copy ""
+            if bg-key [emit-page-bg page-content bg-key page-width page-height]
             emit-font page-content regular-font
             page-y: usable-top
-            prev-line-size: 0
+            prev-line: none
             page-y: emit-header page-content hdr page-y date-str time-str datetime-str
+            prev-line: if all [hdr not empty? hdr/lines][last hdr/lines][none]
         ]
 
         foreach line ctn/lines [
             either object? line [
+                ; step past the preceding text line box before stacking a block
+                if prev-line [
+                    lm: line-ink prev-line :pdf-metrics
+                    page-y: page-y - lm/2 - line-gap-px
+                ]
+                prev-line: none
                 switch line/type [
                     table [
                         mods: table-modifiers line/args
@@ -859,7 +1007,7 @@ report-pdf: make report-styles [
                         first-h: either all [object? first-data first-data/type = 'pagebreak][
                             row-h
                         ][
-                            either first-data [row-height first-data][row-h]
+                            either first-data [row-height first-data :pdf-metrics][row-h]
                         ]
                         if (page-y - row-h - first-h - line-height) < page-bottom [new-page]
 
@@ -880,13 +1028,13 @@ report-pdf: make report-styles [
                                 emit-table-row page-content page-y row-h table-left table-width boxed? alt? true 0 col-info []
                                 page-y: page-y - row-h
                             ][
-                                row-h: row-height row-item
+                                row-h: row-height row-item :pdf-metrics
                                 if (page-y - row-h) < page-bottom [
                                     new-page
                                     row-h: header-row-h
                                     emit-table-row page-content page-y row-h table-left table-width boxed? alt? true 0 col-info []
                                     page-y: page-y - row-h
-                                    row-h: row-height row-item
+                                    row-h: row-height row-item :pdf-metrics
                                 ]
 
                                 row-num: row-num + 1
@@ -909,7 +1057,7 @@ report-pdf: make report-styles [
                                 decl-w: image-declared-width ia cap-info
                                 img-aspect: to float! img-obj/size/y / img-obj/size/x
                                 cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
-                                cap-h: either img-cap [line-advance cap-line][0]
+                                cap-h: either img-cap [line-advance cap-line :pdf-metrics][0]
                                 ; reserve the caption line + the line below so the whole block fits the page
                                 img-avail-w: max 1 (page-width - margin-left - margin-right)
                                 img-avail-full: max 1 (usable-top - page-bottom - line-height - cap-h)
@@ -984,12 +1132,12 @@ report-pdf: make report-styles [
                         ]
                         cch: col-chpx col-styles
                         either width-spec = 'auto [
-                            col-col-w: measure-column-pixels styled-rows col-img-w
+                            col-col-w: measure-column-pixels styled-rows col-img-w :pdf-metrics
                         ][
                             either any [number? width-spec issue? width-spec][
                                 col-col-w: col-w-px width-spec cch
                             ][
-                                col-col-w: measure-column-pixels styled-rows col-img-w
+                                col-col-w: measure-column-pixels styled-rows col-img-w :pdf-metrics
                             ]
                         ]
                         either all [any [number? gap-spec issue? gap-spec] gap-spec][
@@ -1085,18 +1233,19 @@ report-pdf: make report-styles [
                         ]
                     ]
                 ]
+                prev-line: none
             ][
                 if block? line [
                     lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
                     foreach l lines [
-                        sz: max-style-size l
-                        ; keep consecutive baselines factor x max(prev, cur) apart
-                        if prev-line-size > 0 [page-y: page-y - line-gap sz prev-line-size]
-                        adv: line-advance l
-                        if (page-y - adv) < page-bottom [new-page]
+                        if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
+                        lm: line-ink l :pdf-metrics
+                        if (page-y - lm/3) < page-bottom [
+                            new-page
+                            if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
+                        ]
                         render-pairs-line page-content l page-y
-                        page-y: page-y - adv
-                        prev-line-size: sz
+                        prev-line: l
                     ]
                 ]
             ]
