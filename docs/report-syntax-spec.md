@@ -186,6 +186,8 @@ line-item    := [ value style-block? value style-block? … ]
 - A single-segment line is rendered left-aligned; a multi-segment line flows
   segments left-to-right from the left margin. Segments are joined on one line —
   **there is no word wrapping** (§13).
+- An **empty line block `[]` is a blank line**: it parses exactly like `[""]` and
+  advances one line height. Use `[]` (or `[""]`) as a spacer between items.
 
 ### 4.2 Table items
 

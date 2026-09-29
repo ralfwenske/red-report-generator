@@ -23,6 +23,8 @@ parse-pairs: func [
 ][
     result: copy []
     eff: base
+    ; an empty line block is a blank line: treat it exactly like [""]
+    if empty? blk [return reduce [reduce ["" copy eff]]]
     ; optional leading style block applies to every value on the line
     if all [not tail? blk block? blk/1 is-style? blk/1][
         eff: report-styles/merge-styles eff blk/1
