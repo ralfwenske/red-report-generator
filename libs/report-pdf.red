@@ -697,7 +697,7 @@ report-pdf: make report-styles [
         ; faces sit a few px below the View's line-box top, so push back down by that
         ; leading (measured: h1/h2/h3 -> 7/6/4px). Boxes below stay anchored to `y`,
         ; keeping background/frame geometry identical to the View.
-        lead: either any [style-has styles 'b  (style-heading styles) > 0][
+        lead: either (style-heading styles) > 0 [
             to integer! round ((font-size-for styles) * 0.31)
         ][0]
         base: y + hh - (sz * font-ascent-for styles) - lead
