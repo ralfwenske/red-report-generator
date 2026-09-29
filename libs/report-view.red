@@ -143,7 +143,7 @@ report-view: make report-styles [
     view-metrics: func [
         "Measure text under a style block: [width height ascent] in px (View/OS fonts)"
         text [string!] styles [block!]
-        /local any-style? sz h a
+        /local any-style? sz h a w adv
     ][
         any-style?: any [
             style-has styles 'b  style-has styles 'i  style-has styles 'u
@@ -153,7 +153,17 @@ report-view: make report-styles [
         either any-style? [set-font styles sz][set-font [] font-size]
         h: to integer! second size-text/with measure-face "hg"   ; ascender + descender
         a: to integer! second size-text/with measure-face "h"    ; ascender
-        reduce [measure-text text h a]
+        ; mono: measure length x one glyph advance. The OS shaper applies
+        ; ligatures (ff/fi/fl/ffi) and would otherwise report a narrower run
+        ; than the font's cell width, making boxes/columns ragged and differing
+        ; from the PDF's Base-14 advances.
+        either (style-family styles) = 'mono [
+            adv: measure-text "M"
+            w: (length? text) * adv
+        ][
+            w: measure-text text
+        ]
+        reduce [w h a]
     ]
 
     safe-file-stem: func [
@@ -171,7 +181,7 @@ report-view: make report-styles [
     line-measure: func [
         "Pixel width of text under a style block (for word wrap)."
         text [string!] styles [block!]
-        /local any-style? sz
+        /local any-style? sz adv
     ][
         any-style?: any [
             style-has styles 'b  style-has styles 'i  style-has styles 'u
@@ -179,7 +189,12 @@ report-view: make report-styles [
         ]
         sz: font-size-for styles
         either any-style? [set-font styles sz][set-font [] font-size]
-        measure-text text
+        either (style-family styles) = 'mono [
+            adv: measure-text "M"
+            (length? text) * adv
+        ][
+            measure-text text
+        ]
     ]
 
     avg-char-width: func [

@@ -322,7 +322,7 @@ proposal suggested "center if no alignment given" — *not* adopted; `'^` was ke
 | `!u` | negate underline — suppresses `u`, and the automatic underline implied by `link-N`/`hint-N` |
 | `s` | serif font (the default) |
 | `ss` | sans-serif font |
-| `m` | monospace font |
+| `m` | monospace font (widths are `length × cell advance`, independent of font ligatures, so the View and PDF agree) |
 | `h1` / `h2` / `h3` | heading levels, font sizes 24 / 18 / 14 pt |
 | `word-N` | any style word may carry a `-N` size suffix (points), e.g. `i-8` (italic 8), `m-10` (mono 10), `ss-12` (sans 12), `h2-20`; it sets that value's font size, or the whole line when used in the line's leading style block |
 
