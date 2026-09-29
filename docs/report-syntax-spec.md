@@ -399,9 +399,12 @@ Tuple position defines the role (1st = font color, 2nd = background, 3rd = frame
 | `hint-N` | hover hint; after the hint delay calls the handler with `'hint N text` |
 
 A `link-N` style implies a **solid** underline, a `hint-N` style a **dotted** one,
-automatically — unless `!u` is present (which suppresses the underline).
+automatically — unless `!u` is present (which suppresses the underline). An implicit
+auto-underline is also **not drawn when the run has an opaque background** (the
+background already marks the run, and with a 1 px row gap the underline would land in
+the next row's box); an explicit `u` is always drawn.
 These auto-underlines are **View-only**: the PDF drops links/hints entirely and so does
-not auto-underline them (an explicit `u` still underlines).
+not auto-underline them (an explicit `u` still underlines — including over a background).
 
 The handler signature is `func [type [word!] id [word! number!] text [string!]]`
 (Red 0.6.6 has no distinct runtime `lit-word!` — `'link`/`'hint` arrive as `word!`,

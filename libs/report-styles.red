@@ -276,30 +276,38 @@ report-styles: context [
     ]
 
     style-underline-type: func [
-        "Underline style: 'solid | 'dotted | 'none.  u/link-N -> 'solid, hint-N -> 'dotted, unless !u"
+        "Underline style: 'solid | 'dotted | 'none. An explicit u wins; otherwise link-N -> 'solid, hint-N -> 'dotted, unless !u."
         styles [block!]
         /explicit
         /local ws
     ][
-        either find styles '!u [
-            'none
-        ][
-            either find styles 'u [
-                'solid
-            ][
-                if not explicit [
-                    foreach ws styles [
-                        if all [word? ws (length? form ws) >= 6][
-                            switch copy/part form ws 5 [
-                                "link-" [return 'solid]
-                                "hint-" [return 'dotted]
-                            ]
-                        ]
+        if find styles 'u [return 'solid]
+        if find styles '!u [return 'none]
+        if not explicit [
+            foreach ws styles [
+                if all [word? ws (length? form ws) >= 6][
+                    switch copy/part form ws 5 [
+                        "link-" [return 'solid]
+                        "hint-" [return 'dotted]
                     ]
                 ]
-                'none
             ]
         ]
+        'none
+    ]
+
+    style-underline-shown?: func [
+        {Should an underline be drawn? An explicit u always is; an implicit link/hint
+         underline is hidden when the run has an opaque background (the background
+         already marks the run, and the underline would collide with the row below).}
+        styles [block!]
+        /local ut bg
+    ][
+        ut: style-underline-type styles
+        if ut = 'none [return false]
+        if find styles 'u [return true]
+        bg: style-bg-color styles
+        not all [bg opaque-tuple? bg]
     ]
 
     style-split: func [
@@ -322,7 +330,7 @@ report-styles: context [
     merge-styles: func [
         "Merge a line (base) style with a per-value style: per-value wins on colors, alignment, family, heading, format, width; decorations (b i u ...) are additive."
         base [block!] extra [block!]
-        /local bs es bd bc ed ec ov out s has-int? ndrops new-bd ed2
+        /local bs es bd bc ed ec ov out s has-int? ndrops new-bd
     ][
         bs: style-split base
         es: style-split extra
@@ -340,11 +348,8 @@ report-styles: context [
             foreach s bd [unless find ndrops s [append new-bd s]]
             bd: new-bd
         ]
-        ed2: copy []
-        foreach s ed [
-            unless all [word? s (length? form s) >= 2 (first form s) = #"!"][append ed2 s]
-        ]
-        ed: ed2
+        ; keep the '!X' tokens in the result so downstream style readers (e.g.
+        ; style-underline-type) can still see an explicit negation
         if empty? ed [
             ; extra has no directives (only colors and/or negations): base directives
             ; plus the extra color if any, else the base color

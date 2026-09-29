@@ -516,7 +516,7 @@ report-view: make report-styles [
             ]
         ]
 
-        ut: style-underline-type styles
+        ut: either style-underline-shown? styles [style-underline-type styles][none]
         if ut <> 'none [
             ul-x: dx
             ul-y: dy + 2
