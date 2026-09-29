@@ -59,6 +59,10 @@ report-view: make report-styles [
     total-pages: 0
     pages: copy []
     prev-line: none     ; previously drawn line (metrics-based baseline stepping)
+    prev-draw?: false  ; previous BODY item was a DRAW (skip the block step-past)
+    prev-box: none     ; [x y w h] draw-space box of the previous BODY item
+    track-box?: false  ; when true, _emit-text-decorations records text box extents
+    box-min-x: none  box-min-y: none  box-max-x: none  box-max-y: none
     bg-cmds: copy []    ; DRAW-BG draw commands (applied to every page)
     current-hdr: none
     current-ftr: none
@@ -385,6 +389,86 @@ report-view: make report-styles [
         true
     ]
 
+    ;=== Inline raw draw ([DRAW H [ops]] in BODY) ============================
+
+    box-reset: does [
+        box-min-x: box-min-y: box-max-x: box-max-y: none
+    ]
+
+    box-note: func [x0 [integer!] y0 [integer!] x1 [integer!] y1 [integer!]][
+        box-min-x: either box-min-x [min box-min-x x0][x0]
+        box-min-y: either box-min-y [min box-min-y y0][y0]
+        box-max-x: either box-max-x [max box-max-x x1][x1]
+        box-max-y: either box-max-y [max box-max-y y1][y1]
+    ]
+
+    box-finish: does [
+        prev-box: either box-min-x [
+            reduce [box-min-x box-min-y (box-max-x - box-min-x) (box-max-y - box-min-y)]
+        ][none]
+    ]
+
+    ; Binding context for a DRAW block: page geometry plus the running cursor
+    ; (x/y = top-left where the next element goes), the draw's own height (h),
+    ; the content width (w) and the previous item's box (prev-*), all in
+    ; page/draw space (top-down) so the ops read like ordinary draw code.
+    draw-env: func [hh [integer!] /local e][
+        e: make object! [
+            page-width: 100 page-height: 100
+            margin-left: 0 margin-right: 0 margin-top: 0 margin-bottom: 0
+            x: 0 y: 0 w: 0 h: 0
+            prev-x: 0 prev-y: 0 prev-w: 0 prev-h: 0 prev?: false
+        ]
+        set in e 'page-width page-width
+        set in e 'page-height page-height
+        set in e 'margin-left margin-left
+        set in e 'margin-right margin-right
+        set in e 'margin-top margin-top
+        set in e 'margin-bottom margin-bottom
+        set in e 'x margin-left
+        set in e 'y to-draw-y page-y
+        set in e 'w max 1 (page-width - margin-left - margin-right)
+        set in e 'h hh
+        if prev-box [
+            set in e 'prev-x prev-box/1
+            set in e 'prev-y prev-box/2
+            set in e 'prev-w prev-box/3
+            set in e 'prev-h prev-box/4
+            set in e 'prev? true
+        ]
+        e
+    ]
+
+    _compose-draw: func [ops [block!] hh [integer!]][
+        compose/deep bind copy ops draw-env hh
+    ]
+
+    draw-item-height: func [
+        "Height a DRAW item consumes: explicit arg, else measured from its ops."
+        line [object!]
+        /local h
+    ][
+        either empty? line/args [
+            either h: draw-ops-height _compose-draw line/lines 0 [h][0]
+        ][
+            line/args/1
+        ]
+    ]
+
+    _emit-draw: func [
+        "Render an inline [DRAW H [ops]] item; returns the height it consumed"
+        line [object!]
+        /local hh ops
+    ][
+        hh: draw-item-height line
+        ops: _compose-draw line/lines hh
+        append page-draw ops
+        ; leave the draw state clean for the renderer commands that follow
+        append page-draw compose [pen black fill-pen off line-width (stroke-width)]
+        page-y: page-y - hh
+        hh
+    ]
+
     ;=== Draw styled text ===
 
     _emit-text-decorations: func [
@@ -399,6 +483,8 @@ report-view: make report-styles [
         fc: style-frame-color styles
         if all [bg not opaque-tuple? bg][bg: none]
         if all [fc not opaque-tuple? fc][fc: none]
+
+        if track-box? [box-note dx bt (dx + tw) bb]
 
         if fc [
             append page-draw compose [
@@ -835,6 +921,8 @@ report-view: make report-styles [
         set-font [] font-size
         page-y: usable-top
         prev-line: none
+        prev-draw?: false
+        prev-box: none
         page-y: draw-header current-hdr page-y date-str time-str datetime-str
         prev-line: if all [current-hdr not empty? current-hdr/lines][last current-hdr/lines][none]
     ]
@@ -1251,7 +1339,7 @@ report-view: make report-styles [
     generate: func [
         "Generate a multi-page report using draw dialect. Returns block of draw blocks."
         page-obj [object!] "Parsed page from parse-report"
-        /local first-line first-sz line paper ascent lm
+        /local first-line first-sz line paper ascent lm dh y0 ww
     ][
         current-hdr: page-obj/header
         current-ftr: page-obj/footer
@@ -1307,21 +1395,33 @@ report-view: make report-styles [
 
         page-y: usable-top
         prev-line: none
+        prev-draw?: false
+        prev-box: none
         page-y: draw-header current-hdr page-y date-str time-str datetime-str
         prev-line: if all [current-hdr not empty? current-hdr/lines][last current-hdr/lines][none]
 
+        ww: max 1 (page-width - margin-left - margin-right)
         foreach line page-obj/content/lines [
+            box-reset
             either object? line [
                 ; step past the preceding text line box before stacking a block
-                if prev-line [
+                if all [prev-line not prev-draw?] [
                     lm: line-ink prev-line :view-metrics
                     page-y: page-y - lm/2 - line-gap-px
                 ]
                 prev-line: none
+                y0: page-y
                 switch line/type [
                     table     [_emit-table line]
                     image     [_emit-image line]
                     column    [_emit-column line]
+                    draw [
+                        dh: draw-item-height line
+                        ; start a new page if the draw does not fit here
+                        if (dh > (page-y - page-bottom)) [new-page]
+                        y0: page-y
+                        _emit-draw line
+                    ]
                     pagebreak [
                         either empty? line/args [
                             new-page
@@ -1330,10 +1430,21 @@ report-view: make report-styles [
                         ]
                     ]
                 ]
-                prev-line: none
+                prev-draw?: line/type = 'draw
+                ; record the item's box for a following DRAW's prev-* words
+                box-note margin-left (to-draw-y y0) (margin-left + ww) (to-draw-y page-y)
+                ; after a DRAW leave a zero-descent marker so the next text line
+                ; steps below the art (a following block skips the step)
+                either prev-draw? [prev-line: copy []][prev-line: none]
             ][
-                if block? line [_emit-pairs line]
+                if block? line [
+                    track-box?: true
+                    _emit-pairs line
+                    track-box?: false
+                    prev-draw?: false
+                ]
             ]
+            box-finish
         ]
 
         append/only pages page-draw
@@ -1364,7 +1475,7 @@ report-view: make report-styles [
         /local z sz composed
     ][
         z: zoom / 100.0
-        sz: as-pair to integer! page-width * z  to integer! page-height * z
+        sz: as-pair to integer! (page-width * z) to integer! (page-height * z)
         composed: compose/deep [scale (z) (z) (page-block)]
         draw sz composed
     ]

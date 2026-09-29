@@ -41,7 +41,7 @@ parse-pairs: func [
     result
 ]
 
-known-keywords: [header body footer table image column pagebreak draw-bg]
+known-keywords: [header body footer table image column pagebreak draw-bg draw]
 paper-sizes:    [a4 letter legal a3 a5]
 margin-sides:   [top bottom left right margin]
 
@@ -137,6 +137,17 @@ parse-section: func [
                 ]
                 if all [not tail? inner block? inner/1][body: copy inner/1]
                 append/only result object [type: kw-type args: kw-args lines: body]
+                pos: next pos
+                continue
+            ]
+            ; DRAW: optional integer height arg, then ONE raw draw block (inline art)
+            if kw-type = 'draw [
+                while [all [not tail? inner not block? inner/1 not paren? inner/1]][
+                    append kw-args inner/1
+                    inner: next inner
+                ]
+                if all [not tail? inner block? inner/1][body: copy inner/1]
+                append/only result object [type: kw-type args: kw-args img: none lines: body]
                 pos: next pos
                 continue
             ]
@@ -424,7 +435,7 @@ parse-section: func [
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a bg
+        /local err pg msg ln i row a bg parsed
     ][
         ;--- Cheap structural pre-check (catches unknown keywords/directives) ---
         msg: page-problem page
@@ -494,7 +505,7 @@ parse-section: func [
                 either find [header body footer] ln/type [
                         return rejoin [sec-name " line " i ": '" ln/type "' is a section keyword; sections are only allowed at the top level"]
                     ][
-                        unless find [table image column pagebreak] ln/type [
+                        unless find [table image column pagebreak draw] ln/type [
                             return rejoin [sec-name " line " i ": unknown keyword '" ln/type]
                         ]
                     ]
@@ -569,6 +580,10 @@ parse-section: func [
                                             if msg [return msg]
                                         ]
                                     ]
+                                    all [object? r r/type = 'pagebreak][true]
+                                    true [
+                                        return rejoin [sec-name " line " i ": COLUMN rows may be text or IMAGE, got " mold r]
+                                    ]
                                 ]
                             ]
                         ]
@@ -589,6 +604,33 @@ parse-section: func [
                             ]
                         ]
                         pagebreak [true] ; any args acceptable
+                        draw [
+                            unless sec-name = "BODY" [
+                                return rejoin [sec-name " line " i ": DRAW is only supported inside BODY"]
+                            ]
+                            if (length? ln/args) > 1 [
+                                return rejoin [sec-name " line " i ": DRAW takes at most one height (integer), got " mold ln/args]
+                            ]
+                            if all [not empty? ln/args not integer? ln/args/1] [
+                                return rejoin [sec-name " line " i ": DRAW height must be an integer, got " mold ln/args/1]
+                            ]
+                            if all [not empty? ln/args ln/args/1 < 0] [
+                                return rejoin [sec-name " line " i ": DRAW height must be 0 or more"]
+                            ]
+                            if empty? ln/lines [
+                                return rejoin [sec-name " line " i ": DRAW needs a draw block, e.g. [DRAW 20 [box 0x0 40x20]]"]
+                            ]
+                            parsed: report-styles/draw-parse ln/lines
+                            if all [not empty? parsed  parsed/1 = 'error][
+                                return rejoin [sec-name " line " i ": DRAW: unsupported draw command '" mold parsed/2 "' (see 'Advanced usage - raw draw')"]
+                            ]
+                            unless report-styles/draw-args-ok? ln/lines [
+                                return rejoin [sec-name " line " i ": DRAW: a command is missing its arguments"]
+                            ]
+                            if all [empty? ln/args  not report-styles/draw-ops-height ln/lines 0] [
+                                return rejoin [sec-name " line " i ": DRAW has no measurable height below its cursor; add an explicit height, e.g. [DRAW 20 [...]]"]
+                            ]
+                        ]
                     ]
             ]
         ]

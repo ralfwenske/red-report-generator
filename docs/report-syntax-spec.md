@@ -54,7 +54,9 @@ margin       := top-N | bottom-N | left-N | right-N | margin-N   ; N in points, 
 section-item := [HEADER [items]]            ; optional
               | [BODY   [items]]            ; required
               | [FOOTER [items]]            ; optional
-              | [DRAW-BG density? [draw…]]  ; optional raw page background (§3.1)
+              | [DRAW-BG density? [draw…]]  ; optional raw page background (§3.1, §16)
+
+item         := … | [DRAW H? [draw…]]         ; BODY-only foreground art (Advanced, §16)
 ```
 
 - `BODY` is **required**; `HEADER` and `FOOTER` are optional and may appear in any order.
@@ -122,8 +124,10 @@ report-source/build-report: compose/deep [
   (`red-view`). Building a PDF with the plain console `red` omits the background and
   prints a warning; the View window always shows it. `red tests/check.red --pdf`
   therefore skips `DRAW-BG` for this one sample.
-- There is no `DRAW-FG`: a transparent foreground overlay is not currently
-  expressible because PDF image embedding supports JPEG only (no alpha/`/SMask`).
+- There is an inline foreground counterpart, `[DRAW H [draw…]]`, described in the
+  Advanced usage section (§16). Unlike DRAW-BG it is rendered as **native vector**
+  by both renderers (no raster, works headless), which is why it draws a restricted
+  subset of the dialect.
 
 `DRAW-BG` applies to all pages. To decorate a single page, draw oversized art on a
 one-page report (raw draw is not clipped to the text margins).
@@ -137,7 +141,7 @@ makes it a keyword item, anything else makes it a *line*:
 item        := keyword-item | line-item
 
 keyword-item := [ known-word args… [items]? ]   ; trailing items block optional
-known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK
+known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK | DRAW
 args         := values up to the first block (words, numbers, files, issues, …)
 
 line-item    := [ value style-block? value style-block? … ]
@@ -713,6 +717,129 @@ Prioritized roadmap — each item is independent and can be taken alone.
     configurable per report (currently context constants).
 15. Consider `'PAGEBREAK` inside COLUMN rows (currently only IMAGE and lines) and
     document row-type support per container.
+
+---
+
+## 16. Advanced usage — raw draw
+
+The core syntax above (text, styles, tables, columns, images, sections, tokens) is
+the intended everyday surface. This section is the **escape hatch**: talking to the
+page canvas directly. It is deliberately quarantined here because it adds a
+coordinate system, a restricted command set, and renderer caveats that normal
+reports never need.
+
+Two layers exist, and they are complementary:
+
+- **`[DRAW H [draw…]]`** — *inline foreground*. Placed in `BODY`, it paints at its
+  position in the flow: over everything already emitted, under everything after it.
+  Rendered as **native vector** by both the View and the PDF, so it works headless
+  and never needs transparency.
+- **`[DRAW-BG density? [draw…]]`** — *page background* (§3.1). Emitted first on
+  **every** page, behind all content, and rasterized by the full draw engine, so it
+  accepts the whole dialect (gradients, splines, effects, images). It is the right
+  place for page chrome; it does not consume flow space.
+
+Keep DRAW-BG for whole-page background art. Use DRAW for art that belongs to the
+content flow (rules, badges, per-element frames, inline shapes).
+
+### 16.1 Inline DRAW
+
+```text
+[DRAW H [draw…]]     ; H = integer points the item consumes in the flow (optional)
+[DRAW [draw…]]       ; H omitted: measured from the ops (see 16.3), else invalid
+```
+
+Example — frame the paragraph just emitted, then a row of shapes with text under it
+(see `samples/026-draw.red`):
+
+```red
+[BODY [
+    ["This paragraph is framed by the DRAW that follows it." [b]]
+    [DRAW 10 [
+        pen 90.120.200  fill-pen off  line-width 1
+        box (as-pair (prev-x - 5) (prev-y - 5))
+            (as-pair (prev-x + prev-w + 5) (prev-y + prev-h + 5)) 6
+    ]]
+    ["Text continues below the frame."]
+    [DRAW 44 [
+        pen 0.0.160  fill-pen 235.242.255  line-width 2
+        box (as-pair x y) (as-pair (x + 70) (y + 40)) 8
+        circle (as-pair (x + 100) (y + 20)) 16
+        line (as-pair (x + 130) y) (as-pair (x + 180) (y + 40))
+        triangle (as-pair (x + 195) (y + 40)) (as-pair (x + 235) (y + 40)) (as-pair (x + 215) y)
+    ]]
+    ["Text continues underneath the shapes."]
+]]
+```
+
+### 16.2 Coordinates and bound words
+
+Coordinates are **page/draw space**: pixels from the page's top-left corner, y
+growing downward — the same convention as DRAW-BG and Red's draw dialect. Words
+bound inside the block:
+
+| word | meaning |
+|---|---|
+| `x`,`y` | the running cursor: top-left where the next item would go |
+| `w` | content width (page width minus left/right margins) |
+| `h` | this draw's height `H` |
+| `prev-x`,`prev-y`,`prev-w`,`prev-h` | the bounding box of the **previous item** (a whole wrapped paragraph, not one visual line), in draw space |
+| `prev?` | true when a previous item box exists |
+| `page-width`,`page-height` | page size in points |
+| `margin-left/right/top/bottom` | content margins |
+
+Because `prev-*` is the full box of the previous element, a frame is simply a `box`
+drawn 4–5 px outside it (as above). A following DRAW and a following text line both
+continue below the art: text after a DRAW steps one gap below it, so the art does
+not overlap the text.
+
+### 16.3 Height (`H`) and measuring
+
+- `H` is the vertical space the item consumes; the next item's top is `H` below the
+  cursor. `H = 0` is allowed (pure decoration that does not advance the flow).
+- If `H` is omitted, the renderer measures the ops (the extent **below the cursor**,
+  including stroke width). This only works with **literal** coordinates: a paren
+  that references `x`/`h`/`prev-*` cannot be measured, so such blocks must give `H`.
+- To clear a frame's overhang below its paragraph, use an `H` a few points larger
+  than the overhang (e.g. `[DRAW 10 […]]` with a 5 px frame margin).
+
+### 16.4 What is allowed
+
+Both renderers reproduce one restricted subset; anything else is rejected by
+`validate-report` so the View and the PDF never diverge:
+
+| kind | allowed |
+|---|---|
+| state | `pen <tuple>` / `pen off`, `fill-pen <tuple>` / `fill-pen off`, `line-width`, `line-join` (miter/round/bevel), `line-cap` (flat/round/square), `anti-alias` |
+| shapes | `box p1 p2` and `box p1 p2 radius` (rounded), `circle c r`, `ellipse c r`, `line p1 p2`, `triangle p1 p2 p3`, `polygon p1 p2 …` |
+
+Colors are solid RGB tuples only. Not yet supported (validation error): `text`,
+`image`, gradients, `spline`/`arc`/`curve`/`dot`, `shape`/`draw` blocks, `clip`,
+`effect`, and any transform (`translate`/`scale`/`rotate`/`skew`/`matrix`).
+`polygon` takes its points as **separate arguments** (Red's draw dialect rejects a
+block form).
+
+DRAW is currently **BODY-only**; `HEADER`/`FOOTER` items would sit above/below the
+content stream and need separate height accounting, so they are rejected for now.
+
+### 16.5 Renderer notes
+
+- Inline DRAW is emitted as native vector operators in the PDF, so it needs no GUI
+  and no page-sized bitmap — unlike DRAW-BG, whose PDF path is rasterized and is
+  skipped in headless runs.
+- Because the PDF uses the Base-14 fonts while the View uses OS faces, `text` is not
+  in the subset yet (glyph widths and measured heights would differ between the two).
+- Transparent/filled art is not a problem: a foreground draw only paints its own
+  ink, and alpha-0 colors are dropped, so nothing needs an alpha channel.
+
+### 16.6 Ideas kept out of the current surface
+
+- `[FRAME 6 [ …items… ]]` — a grouping keyword that lays out its contents first, then
+  draws a background/frame behind them. This is what you need for a **fill behind** a
+  wrapping paragraph (inline DRAW can only frame on top; the paragraph's height is not
+  known before it is laid out).
+- `text` and `image` inside DRAW, and inline-in-a-line DRAW (where `x` is the right
+  edge of the previous value).
 
 ---
 

@@ -950,6 +950,168 @@ report-styles: context [
 
     header-row-h: does [line-height + row-padding]
 
+    ;=== Inline raw draw (BODY) — shared capability contract =================
+    ; The allowlisted draw-dialect subset both renderers reproduce: the View uses
+    ; Red's native draw, the PDF translates each op to vector operators. Anything
+    ; outside this set is rejected so View and PDF never diverge. Coordinates are
+    ; page/draw space (top-down), the same convention as DRAW-BG.
+
+    draw-command-words: [
+        pen fill-pen line-width line-join line-cap anti-alias
+        box circle ellipse line triangle polygon
+    ]
+
+    draw-command-arity: [
+        pen 1  fill-pen 1  line-width 1  line-join 1  line-cap 1  anti-alias 1
+        box 2  circle 2  ellipse 2  line 2  triangle 3  polygon 1
+    ]
+
+    draw-is-command?: func [v [any-type!]][
+        all [word? v  not none? find draw-command-words to word! v]
+    ]
+
+    draw-parse: func [
+        {Split a composed draw ops block into [cmd args] items. Returns a block of
+         [cmd arg-block] items, or [error <token>] on the first unknown command.}
+        ops [block!]
+        /local pos cmd args out
+    ][
+        out: copy []
+        pos: ops
+        while [not tail? pos][
+            cmd: pos/1
+            unless draw-is-command? cmd [return reduce ['error cmd]]
+            pos: next pos
+            args: copy []
+            while [all [not tail? pos  not draw-is-command? pos/1]][
+                append/only args pos/1
+                pos: next pos
+            ]
+            append/only out reduce [to word! cmd args]
+        ]
+        out
+    ]
+
+    draw-min-arity: func [cmd [word!] /local a][
+        a: select draw-command-arity cmd
+        either a [a][0]
+    ]
+
+    draw-args-ok?: func [
+        "True when every command has at least its minimum number of arguments."
+        ops [block!]
+        /local parsed item
+    ][
+        parsed: draw-parse ops
+        if all [not empty? parsed  parsed/1 = 'error][return false]
+        foreach item parsed [
+            if (length? item/2) < draw-min-arity item/1 [return false]
+        ]
+        true
+    ]
+
+    draw-shape-extent: func [
+        "Accumulate one shape's y-extent into acc (a two-integer block [min max])."
+        cmd [word!] args [block!] acc [block!]
+        /local y0 y1 r v
+    ][
+        switch cmd [
+            box [
+                if all [(length? args) >= 2  pair? args/1  pair? args/2][
+                    y0: min args/1/y args/2/y
+                    y1: max args/1/y args/2/y
+                    if y0 < acc/1 [acc/1: y0]
+                    if y1 > acc/2 [acc/2: y1]
+                ]
+            ]
+            circle [
+                if all [(length? args) >= 2  pair? args/1  number? args/2][
+                    y0: args/1/y - args/2
+                    y1: args/1/y + args/2
+                    if y0 < acc/1 [acc/1: y0]
+                    if y1 > acc/2 [acc/2: y1]
+                ]
+            ]
+            ellipse [
+                if all [(length? args) >= 2  pair? args/1][
+                    r: either pair? args/2 [args/2/y][args/2]
+                    if number? r [
+                        y0: args/1/y - r
+                        y1: args/1/y + r
+                        if y0 < acc/1 [acc/1: y0]
+                        if y1 > acc/2 [acc/2: y1]
+                    ]
+                ]
+            ]
+            line [
+                if all [(length? args) >= 2  pair? args/1  pair? args/2][
+                    foreach v reduce [args/1 args/2][
+                        if v/y < acc/1 [acc/1: v/y]
+                        if v/y > acc/2 [acc/2: v/y]
+                    ]
+                ]
+            ]
+            triangle [
+                if all [(length? args) >= 3  pair? args/1  pair? args/2  pair? args/3][
+                    foreach v reduce [args/1 args/2 args/3][
+                        if v/y < acc/1 [acc/1: v/y]
+                        if v/y > acc/2 [acc/2: v/y]
+                    ]
+                ]
+            ]
+            polygon [
+                foreach v args [
+                    case [
+                        pair? v [
+                            if v/y < acc/1 [acc/1: v/y]
+                            if v/y > acc/2 [acc/2: v/y]
+                        ]
+                        block? v [
+                            if all [(length? v) >= 2 number? v/2][
+                                if v/2 < acc/1 [acc/1: v/2]
+                                if v/2 > acc/2 [acc/2: v/2]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+
+    draw-ops-height: func [
+        {Vertical space a composed draw ops block consumes below its placement
+         cursor y (draw space). Returns none when there is no shape to measure
+         below the cursor (the caller must then require an explicit H).}
+        ops [block!] y [integer!]
+        /local parsed pen-off? width acc item cmd args
+    ][
+        parsed: draw-parse ops
+        if all [not empty? parsed  parsed/1 = 'error][return none]
+        pen-off?: false
+        width: 1
+        acc: reduce [y y]
+        foreach item parsed [
+            cmd: item/1
+            args: item/2
+            switch cmd [
+                pen [if not empty? args [pen-off?: args/1 = 'off]]
+                line-width [if all [not empty? args  number? args/1][width: args/1]]
+                box  [draw-shape-extent cmd args acc]
+                circle [draw-shape-extent cmd args acc]
+                ellipse [draw-shape-extent cmd args acc]
+                line [draw-shape-extent cmd args acc]
+                triangle [draw-shape-extent cmd args acc]
+                polygon [draw-shape-extent cmd args acc]
+            ]
+        ]
+        if not pen-off? [
+            acc/1: acc/1 - to integer! (width / 2)
+            acc/2: acc/2 + to integer! (width / 2)
+        ]
+        if acc/2 < y [return none]
+        max 0 to integer! (acc/2 - y)
+    ]
+
     ;=== Word wrap =============================================================
 
     style-box-width: func [

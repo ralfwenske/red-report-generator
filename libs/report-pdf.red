@@ -52,6 +52,12 @@ report-pdf: make report-styles [
     current-color:          none
     jx:                     0
 
+    ; inline raw draw (BODY) state
+    prev-draw?:             false
+    prev-box:               none      ; [x y w h] draw-space box of the previous item
+    track-box?:             false
+    box-min-x: none  box-min-y: none  box-max-x: none  box-max-y: none
+
     col-apply-styles: func [
         "Merge column default styles into every value of a line (deeper per-value styles win; !X drops a column style)"
         line [block!] col-styles [block!]
@@ -417,12 +423,247 @@ report-pdf: make report-styles [
         ]
     ]
 
+    ;=== Inline raw draw (BODY) — vector translation of the subset ==========
+
+    kappa: 0.5523     ; circle -> cubic Bezier constant
+
+    box-reset: does [
+        box-min-x: box-min-y: box-max-x: box-max-y: none
+    ]
+
+    box-note: func [x0 [number!] y0 [number!] x1 [number!] y1 [number!]][
+        x0: to integer! x0  y0: to integer! y0  x1: to integer! x1  y1: to integer! y1
+        box-min-x: either box-min-x [min box-min-x x0][x0]
+        box-min-y: either box-min-y [min box-min-y y0][y0]
+        box-max-x: either box-max-x [max box-max-x x1][x1]
+        box-max-y: either box-max-y [max box-max-y y1][y1]
+    ]
+
+    set-track-box: func ["Set the context flag (generate's function-locals would shadow it)" v [logic!]][
+        track-box?: v
+    ]
+
+    draw-state-reset: does [
+        prev-draw?: false
+        prev-box: none
+        track-box?: false
+    ]
+
+    box-finish: does [
+        prev-box: either box-min-x [
+            reduce [box-min-x box-min-y (box-max-x - box-min-x) (box-max-y - box-min-y)]
+        ][none]
+    ]
+
+    ; Binding context for a DRAW block: page geometry plus the running cursor
+    ; (x/y = top-left where the next element goes), the draw's own height (h),
+    ; the content width (w) and the previous item's box (prev-*), all in
+    ; page/draw space (top-down) so the ops read like ordinary draw code.
+    draw-env: func [hh [integer!] cursor-y [integer!] /local e][
+        e: make object! [
+            page-width: 100 page-height: 100
+            margin-left: 0 margin-right: 0 margin-top: 0 margin-bottom: 0
+            x: 0 y: 0 w: 0 h: 0
+            prev-x: 0 prev-y: 0 prev-w: 0 prev-h: 0 prev?: false
+        ]
+        set in e 'page-width page-width
+        set in e 'page-height page-height
+        set in e 'margin-left margin-left
+        set in e 'margin-right margin-right
+        set in e 'margin-top margin-top
+        set in e 'margin-bottom margin-bottom
+        set in e 'x margin-left
+        set in e 'y page-height - cursor-y
+        set in e 'w max 1 (page-width - margin-left - margin-right)
+        set in e 'h hh
+        if prev-box [
+            set in e 'prev-x prev-box/1
+            set in e 'prev-y prev-box/2
+            set in e 'prev-w prev-box/3
+            set in e 'prev-h prev-box/4
+            set in e 'prev? true
+        ]
+        e
+    ]
+
+    draw-item-height: func [
+        "Height a DRAW item consumes: explicit arg, else measured from its ops."
+        line [object!] cursor-y [integer!]
+        /local h
+    ][
+        either empty? line/args [
+            either h: draw-ops-height compose/deep bind copy line/lines draw-env 0 cursor-y [h][0]
+        ][
+            line/args/1
+        ]
+    ]
+
+    draw-poly-points: func [
+        "Points from polygon args: pairs as separate args, or a block of points/flat numbers."
+        args [block!]
+        /local pts v blk i
+    ][
+        pts: copy []
+        foreach v args [
+            case [
+                pair? v [append pts v]
+                block? v [
+                    either all [not empty? v pair? v/1][
+                        foreach p v [if pair? p [append pts p]]
+                    ][
+                        i: 1
+                        while [i + 1 <= length? v][
+                            append pts as-pair v/:i v/(i + 1)
+                            i: i + 2
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        pts
+    ]
+
+    pdf-stroke-setup: func [out [string!] st [object!]][
+        either st/fill [emit out [pdf-kit/rgb st/fill " rg"]][emit out ["0 g"]]
+        if st/pen [
+            emit out [pdf-kit/rgb st/pen " RG " (pdf-kit/num st/width) " w " st/join " j " st/cap " J"]
+        ]
+    ]
+
+    pdf-paint: func [out [string!] st [object!]][
+        emit out [case [
+            all [st/fill st/pen] ["B"]
+            st/fill ["f"]
+            st/pen ["S"]
+            true ["n"]
+        ]]
+    ]
+
+    pdf-emit-round-rect: func [
+        out [string!] bx0 [number!] by0 [number!] bx1 [number!] by1 [number!] r [number!]
+        /local kr
+    ][
+        kr: kappa * r
+        emit out [(pdf-kit/num (bx0 + r)) " " (pdf-kit/num by0) " m"]
+        emit out [(pdf-kit/num (bx1 - r)) " " (pdf-kit/num by0) " l"]
+        emit out [(pdf-kit/num (bx1 - r + kr)) " " (pdf-kit/num by0) " " (pdf-kit/num bx1) " " (pdf-kit/num (by0 + r - kr)) " " (pdf-kit/num bx1) " " (pdf-kit/num (by0 + r)) " c"]
+        emit out [(pdf-kit/num bx1) " " (pdf-kit/num (by1 - r)) " l"]
+        emit out [(pdf-kit/num bx1) " " (pdf-kit/num (by1 - r + kr)) " " (pdf-kit/num (bx1 - r + kr)) " " (pdf-kit/num by1) " " (pdf-kit/num (bx1 - r)) " " (pdf-kit/num by1) " c"]
+        emit out [(pdf-kit/num (bx0 + r)) " " (pdf-kit/num by1) " l"]
+        emit out [(pdf-kit/num (bx0 + r - kr)) " " (pdf-kit/num by1) " " (pdf-kit/num bx0) " " (pdf-kit/num (by1 - r + kr)) " " (pdf-kit/num bx0) " " (pdf-kit/num (by1 - r)) " c"]
+        emit out [(pdf-kit/num bx0) " " (pdf-kit/num (by0 + r)) " l"]
+        emit out [(pdf-kit/num bx0) " " (pdf-kit/num (by0 + r - kr)) " " (pdf-kit/num (bx0 + r - kr)) " " (pdf-kit/num by0) " " (pdf-kit/num (bx0 + r)) " " (pdf-kit/num by0) " c"]
+        emit out ["h"]
+    ]
+
+    pdf-emit-ellipse: func [
+        out [string!] cx [number!] cy [number!] rx [number!] ry [number!]
+        /local krx kry
+    ][
+        krx: kappa * rx  kry: kappa * ry
+        emit out [(pdf-kit/num (cx + rx)) " " (pdf-kit/num cy) " m"]
+        emit out [(pdf-kit/num (cx + rx)) " " (pdf-kit/num (cy + kry)) " " (pdf-kit/num (cx + krx)) " " (pdf-kit/num (cy + ry)) " " (pdf-kit/num cx) " " (pdf-kit/num (cy + ry)) " c"]
+        emit out [(pdf-kit/num (cx - krx)) " " (pdf-kit/num (cy + ry)) " " (pdf-kit/num (cx - rx)) " " (pdf-kit/num (cy + kry)) " " (pdf-kit/num (cx - rx)) " " (pdf-kit/num cy) " c"]
+        emit out [(pdf-kit/num (cx - rx)) " " (pdf-kit/num (cy - kry)) " " (pdf-kit/num (cx - krx)) " " (pdf-kit/num (cy - ry)) " " (pdf-kit/num cx) " " (pdf-kit/num (cy - ry)) " c"]
+        emit out [(pdf-kit/num (cx + krx)) " " (pdf-kit/num (cy - ry)) " " (pdf-kit/num (cx + rx)) " " (pdf-kit/num (cy - kry)) " " (pdf-kit/num (cx + rx)) " " (pdf-kit/num cy) " c"]
+        emit out ["h"]
+    ]
+
+    emit-draw: function [
+        "Translate an inline [DRAW H [ops]] item to vector PDF operators; returns its height."
+        out [string!] line [object!] cursor-y [integer!]
+        /local hh ops parsed st item cmd args x0 x1 y0d y1d pts pp r rx ry
+    ][
+        hh: draw-item-height line cursor-y
+        ops: compose/deep bind copy line/lines draw-env hh cursor-y
+        parsed: draw-parse ops
+        st: make object! [fill: none pen: 0.0.0 width: 1 join: 0 cap: 0]
+        foreach item parsed [
+            cmd: item/1
+            args: item/2
+            switch cmd [
+                pen [st/pen: either args/1 = 'off [none][args/1]]
+                fill-pen [st/fill: either args/1 = 'off [none][args/1]]
+                line-width [if all [not empty? args  number? args/1][st/width: args/1]]
+                line-join [st/join: either args/1 = 'round [1][either args/1 = 'bevel [2][0]]]
+                line-cap [st/cap: either args/1 = 'round [1][either args/1 = 'square [2][0]]]
+                anti-alias []
+                box [
+                    if all [(length? args) >= 2  pair? args/1  pair? args/2][
+                        x0: min args/1/x args/2/x
+                        x1: max args/1/x args/2/x
+                        y0d: min args/1/y args/2/y
+                        y1d: max args/1/y args/2/y
+                        pdf-stroke-setup out st
+                        either all [(length? args) >= 3  number? args/3  args/3 > 0][
+                            r: min args/3 (to integer! (min (x1 - x0) (y1d - y0d)) / 2)
+                            pdf-emit-round-rect out x0 (page-height - y1d) x1 (page-height - y0d) r
+                        ][
+                            emit out [(pdf-kit/num x0) " " (pdf-kit/num (page-height - y1d)) " " (pdf-kit/num (x1 - x0)) " " (pdf-kit/num (y1d - y0d)) " re"]
+                        ]
+                        pdf-paint out st
+                    ]
+                ]
+                circle [
+                    if all [(length? args) >= 2  pair? args/1  number? args/2][
+                        pdf-stroke-setup out st
+                        pdf-emit-ellipse out args/1/x (page-height - args/1/y) args/2 args/2
+                        pdf-paint out st
+                    ]
+                ]
+                ellipse [
+                    if all [(length? args) >= 2  pair? args/1][
+                        rx: either pair? args/2 [args/2/x][args/2]
+                        ry: either pair? args/2 [args/2/y][args/2]
+                        if all [number? rx number? ry][
+                            pdf-stroke-setup out st
+                            pdf-emit-ellipse out args/1/x (page-height - args/1/y) rx ry
+                            pdf-paint out st
+                        ]
+                    ]
+                ]
+                line [
+                    if all [(length? args) >= 2  pair? args/1  pair? args/2][
+                        pdf-stroke-setup out st
+                        emit out [(pdf-kit/num args/1/x) " " (pdf-kit/num (page-height - args/1/y)) " m " (pdf-kit/num args/2/x) " " (pdf-kit/num (page-height - args/2/y)) " l"]
+                        pdf-paint out st
+                    ]
+                ]
+                triangle [
+                    if all [(length? args) >= 3  pair? args/1  pair? args/2  pair? args/3][
+                        pdf-stroke-setup out st
+                        emit out [(pdf-kit/num args/1/x) " " (pdf-kit/num (page-height - args/1/y)) " m"]
+                        emit out [(pdf-kit/num args/2/x) " " (pdf-kit/num (page-height - args/2/y)) " l"]
+                        emit out [(pdf-kit/num args/3/x) " " (pdf-kit/num (page-height - args/3/y)) " l"]
+                        emit out ["h"]
+                        pdf-paint out st
+                    ]
+                ]
+                polygon [
+                    if not empty? args [
+                        pts: draw-poly-points args
+                        if not empty? pts [
+                            pdf-stroke-setup out st
+                            pp: pts/1
+                            emit out [(pdf-kit/num pp/x) " " (pdf-kit/num (page-height - pp/y)) " m"]
+                            foreach pp next pts [
+                                emit out [(pdf-kit/num pp/x) " " (pdf-kit/num (page-height - pp/y)) " l"]
+                            ]
+                            emit out ["h"]
+                            pdf-paint out st
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        hh
+    ]
+
     emit-styled-text: function [
         "Emit text with style-aware font selection, alignment, and colors"
         out [string!] x [number!] y [number!] text [string!]
         col-w [integer!] align [string!] styles [block!]
-        /join "Use cursor chaining for left-aligned segments"
-    ][
+        /join "Use cursor chaining for left-aligned segments"    ][
         if empty? text [exit]
         any-style?: any [
             style-has styles 'b
@@ -493,6 +734,9 @@ report-pdf: make report-styles [
             emit-text-join out base text font-no sz (either fg [fg][none])
             pdf-underline out tx0 base tw ut
             if wpx > tw [set-jx jx0 + wpx]
+            if track-box? [
+                box-note tx0 (page-height - (y - bdesc + bh)) (tx0 + tw) (page-height - (y - bdesc))
+            ]
         ][
             tw: pdf-kit/text-width font-no sz text
             ax: case [
@@ -512,6 +756,9 @@ report-pdf: make report-styles [
             ]
             emit-text-op out ax base text font-no sz (either fg [fg][none]) none none
             pdf-underline out ax base tw ut
+            if track-box? [
+                box-note ax (page-height - (y - bdesc + bh)) (ax + tw) (page-height - (y - bdesc))
+            ]
         ]
     ]
     ;=== Content/header/footer line renderers (pair format) ===
@@ -960,6 +1207,9 @@ report-pdf: make report-styles [
 
         page-y: usable-top
         prev-line: none
+        prev-draw?: false
+        prev-box: none
+        draw-state-reset
         page-y: emit-header page-content hdr page-y date-str time-str datetime-str
         prev-line: if all [hdr not empty? hdr/lines][last hdr/lines][none]
 
@@ -971,18 +1221,23 @@ report-pdf: make report-styles [
             emit-font page-content regular-font
             page-y: usable-top
             prev-line: none
+            prev-draw?: false
+            prev-box: none
             page-y: emit-header page-content hdr page-y date-str time-str datetime-str
             prev-line: if all [hdr not empty? hdr/lines][last hdr/lines][none]
         ]
 
+        ww: max 1 (page-width - margin-left - margin-right)
         foreach line ctn/lines [
+            box-reset
             either object? line [
                 ; step past the preceding text line box before stacking a block
-                if prev-line [
+                if all [prev-line not prev-draw?] [
                     lm: line-ink prev-line :pdf-metrics
                     page-y: page-y - lm/2 - line-gap-px
                 ]
                 prev-line: none
+                y0: page-y
                 switch line/type [
                     table [
                         mods: table-modifiers line/args
@@ -1232,10 +1487,24 @@ report-pdf: make report-styles [
                             if (page-y - (line/args/1 * line-height)) < page-bottom [new-page]
                         ]
                     ]
+                    draw [
+                        dh: draw-item-height line page-y
+                        ; start a new page if the draw does not fit here
+                        if (dh > (page-y - page-bottom)) [new-page]
+                        y0: page-y
+                        emit-draw page-content line y0
+                        page-y: page-y - dh
+                    ]
                 ]
-                prev-line: none
+                prev-draw?: line/type = 'draw
+                ; record the item's box for a following DRAW's prev-* words
+                box-note margin-left (page-height - y0) (margin-left + ww) (page-height - page-y)
+                ; after a DRAW leave a zero-descent marker so the next text line
+                ; steps below the art (a following block skips the step)
+                either prev-draw? [prev-line: copy []][prev-line: none]
             ][
                 if block? line [
+                    set-track-box true
                     lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
                     foreach l lines [
                         if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
@@ -1247,8 +1516,11 @@ report-pdf: make report-styles [
                         render-pairs-line page-content l page-y
                         prev-line: l
                     ]
+                    set-track-box false
+                    prev-draw?: false
                 ]
             ]
+            box-finish
         ]
 
         append pages page-content
