@@ -224,16 +224,77 @@ parse-section: func [
 
     ;--- Top-level page parsing -----------------------------------------------
 
+    ;=== Report-template composition =========================================
+    ; Evaluate parenthesised expressions in a report template at parse time, so
+    ; users can write a plain literal report (no compose/deep) and still use
+    ; (now/date), (total), ... DRAW/DRAW-BG ops are left untouched: their parens
+    ; are evaluated later by the renderer with the page geometry / cursor in scope.
+    ; A report may still be composed by the user; with no parens left this is a
+    ; no-op, so both styles coexist.
+
+    draw-item-block?: func [b [block!]][
+        all [not empty? b  word? b/1  not none? find [draw draw-bg] to word! b/1]
+    ]
+
+    defer-draws: func [
+        "Replace DRAW/DRAW-BG items with placeholders so compose/deep skips them"
+        blk [block!] stashed [block!]
+        /local out e
+    ][
+        out: copy []
+        foreach e blk [
+            either all [block? e  draw-item-block? e][
+                append/only stashed copy/deep e
+                append out to word! rejoin ["__draw-marker-" length? stashed]
+            ][
+                append/only out either block? e [defer-draws e stashed][e]
+            ]
+        ]
+        out
+    ]
+
+    restore-draws: func [
+        "Put the deferred DRAW/DRAW-BG items back after compose/deep"
+        blk [block!] stashed [block!]
+        /local out e s
+    ][
+        out: copy []
+        foreach e blk [
+            case [
+                all [word? e  s: form e  find/match s "__draw-marker-"][
+                    append/only out pick stashed to integer! copy skip s 14
+                ]
+                block? e [append/only out restore-draws e stashed]
+                true [append/only out e]
+            ]
+        ]
+        out
+    ]
+
+    compose-report: func [
+        "Compose a report template's parens, leaving DRAW/DRAW-BG ops deferred"
+        blk [block!]
+        /local stashed out
+    ][
+        stashed: copy []
+        out: defer-draws blk stashed
+        out: compose/deep out
+        either empty? stashed [out][restore-draws out stashed]
+    ]
+
     set 'parse-report func [
         {Parse a report page into a structured object. A page is an optional paper clause
          (leading paper-size word, WxH pair, and/or landscape/portrait) followed by block
          items; the HEADER, BODY and FOOTER section items split into the section objects.
          BODY is required; HEADER and FOOTER are optional and may appear in any order.
-         Default paper is a4 portrait.}
+         Default paper is a4 portrait. Parenthesised expressions are evaluated here
+         (DRAW/DRAW-BG ops kept deferred), so a literal report needs no compose/deep.}
         page [block!]
         /local items h-args h-lines c-args c-lines f-args f-lines has-body bg-args bg-lines
                size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right
     ][
+        ; evaluate the template's parens once (DRAW/DRAW-BG ops stay deferred)
+        page: compose-report page
         ;--- Paper clause: leading size/orientation/margin words or a WxH pair before the items ---
         size-n: 'a4
         orient-n: 'portrait

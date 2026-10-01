@@ -128,11 +128,10 @@ report-source/build-report: compose/deep [
   Advanced usage section (§16). Unlike DRAW-BG it is rendered as **native vector**
   by both renderers (no raster, works headless), which is why it draws a restricted
   subset of the dialect.
-- **Composing the report.** DRAW-BG's (and DRAW's) parens are evaluated at *render*
-  time with the page geometry in scope, so a report built with `compose/deep` would
-  otherwise try to evaluate them too early (`page-width` has no value yet). Give the
-  draw block a **name** instead: `compose/deep` leaves a word alone, and the parser
-  resolves it. See §16.7.
+- **Composing the report.** No `compose/deep` is needed: `parse-report` composes the
+  template's parens for you, and DRAW-BG's (and DRAW's) ops block is deliberately left
+  uncomposed so its parens (`(as-pair page-width 56)`) are evaluated at **render** time
+  with the page geometry in scope (§11.1, §16.7).
 
 `DRAW-BG` applies to all pages. To decorate a single page, draw oversized art on a
 one-page report (raw draw is not clipped to the text margins).
@@ -514,10 +513,23 @@ Example: `["Page <page> of <pages>" [b] (now) [time]]`
 
 ### 11.1 Parenthesized expressions
 
-Reports are normally *pre-composed* with `compose/deep`, e.g. `(now)`, `(total)`,
-`(widget-C)`. The parser also has a safety net: a paren that survives to
-parse time is `do`-evaluated and, if it yields a block, spliced as items. Pre-composing
-is the recommended, deterministic path.
+Write normal Red parens — `(now)`, `(total)`, `(widget-C)` — directly in the report.
+`parse-report` **composes the template for you** (a deep compose) before parsing, so a
+plain literal report needs no `compose/deep`. The one exception is **draw ops**: the
+ops block of `DRAW`/`DRAW-BG` is skipped by that compose so its parens (`(as-pair
+page-width 56)`, `(as-pair x y)`, …) are evaluated later by the renderer with the page
+geometry and cursor in scope (§16.7).
+
+Notes:
+
+- Pre-composing with `compose/deep` yourself still works: with no parens left, the
+  parser's compose is a no-op, so both styles coexist.
+- Parens are evaluated at **parse time** in the calling context. Words the parens
+  reference must be visible then — globals work; locals of an enclosing function do
+  not (compose those yourself, or name the block; §16.7).
+- A paren that yields a block is **spliced** as items (see the splicing rule below).
+- `<now>`/`<page>`/`<pages>` string tokens are unrelated and still replaced by the
+  renderers.
 
 **Splicing rule (load-bearing for programmatically built reports):** `compose`
 splices the *elements* of a block value produced by a paren — it never inserts the
@@ -851,31 +863,36 @@ content stream and need separate height accounting, so they are rejected for now
 - `text` and `image` inside DRAW, and inline-in-a-line DRAW (where `x` is the right
   edge of the previous value).
 
-### 16.7 Using DRAW / DRAW-BG inside `compose/deep`
+### 16.7 Parens, `compose/deep`, and DRAW
 
 DRAW and DRAW-BG parens are evaluated at **render** time, with the page geometry in
 scope (`page-width`, `page-height`, `margin-*`, and for DRAW the cursor/`prev-*`
-words). A report assembled with `compose/deep` would evaluate those same parens at
-**build** time, when `page-width` is not yet known, giving `page-width has no value`.
-
-`compose/deep` never evaluates a *word*, so give the draw block a name and refer to
-it in the item. The parser resolves the word to its block and the parens stay for the
-renderer:
+words). Everything else is composed at **parse** time by `parse-report` (§11.1). The
+parser knows about draw items, so it composes the report while leaving the ops blocks
+alone — you just write the report literally:
 
 ```red
-bg: [ pen off  fill-pen yellow  box 0x0 (as-pair page-width 56) ]   ; deferred
-box: [ pen 0.0.200  fill-pen off  line-width 2
-       box (as-pair x y) (as-pair x + 120 y + 24) ]                 ; deferred
-
-report: compose/deep [ margin-20                                    ; (now/date) etc.
-    [DRAW-BG 3 bg]                                                  ; composes here
-    [HEADER [["Title" [h2] (now/date)]]]
-    [BODY   [["intro" [m]] [DRAW 30 box] ["outro" [m]]]]
+report: [ margin-20
+    [DRAW-BG 3 [ pen off  fill-pen yellow  box 0x0 (as-pair page-width 56) ]]
+    [HEADER [["Title" [h2] (now/date)]]]          ; (now/date) composed here
+    [BODY   [["intro" [m]] [DRAW 30 [ box (as-pair x y) (as-pair x + 120 y + 24) ]] ["outro" [m]]]]
 ]
 ```
 
-The same works for `[DRAW H ops]`. This keeps a single source of truth for geometry
-(the renderer) — nothing about page size is duplicated at build time.
+No `compose/deep` is needed. If you do pre-compose (older code), the parser's compose
+is a no-op because no parens remain.
+
+**Escape hatch — a named block.** If the ops must reference words that only exist in a
+particular scope (e.g. locals of the function that builds the report), give the ops a
+name; `compose/deep` never evaluates a word, and the parser resolves it:
+
+```red
+bg: [ pen off  fill-pen yellow  box 0x0 (as-pair page-width 56) ]
+report: [ margin-20  [DRAW-BG 3 bg]  [BODY [["…"]]] ]
+```
+
+The same holds for `[DRAW H ops]`. Geometry stays in one place (the renderer) — nothing
+about page size is duplicated at build time.
 
 ---
 
