@@ -128,6 +128,11 @@ report-source/build-report: compose/deep [
   Advanced usage section (§16). Unlike DRAW-BG it is rendered as **native vector**
   by both renderers (no raster, works headless), which is why it draws a restricted
   subset of the dialect.
+- **Composing the report.** DRAW-BG's (and DRAW's) parens are evaluated at *render*
+  time with the page geometry in scope, so a report built with `compose/deep` would
+  otherwise try to evaluate them too early (`page-width` has no value yet). Give the
+  draw block a **name** instead: `compose/deep` leaves a word alone, and the parser
+  resolves it. See §16.7.
 
 `DRAW-BG` applies to all pages. To decorate a single page, draw oversized art on a
 one-page report (raw draw is not clipped to the text margins).
@@ -845,6 +850,32 @@ content stream and need separate height accounting, so they are rejected for now
   known before it is laid out).
 - `text` and `image` inside DRAW, and inline-in-a-line DRAW (where `x` is the right
   edge of the previous value).
+
+### 16.7 Using DRAW / DRAW-BG inside `compose/deep`
+
+DRAW and DRAW-BG parens are evaluated at **render** time, with the page geometry in
+scope (`page-width`, `page-height`, `margin-*`, and for DRAW the cursor/`prev-*`
+words). A report assembled with `compose/deep` would evaluate those same parens at
+**build** time, when `page-width` is not yet known, giving `page-width has no value`.
+
+`compose/deep` never evaluates a *word*, so give the draw block a name and refer to
+it in the item. The parser resolves the word to its block and the parens stay for the
+renderer:
+
+```red
+bg: [ pen off  fill-pen yellow  box 0x0 (as-pair page-width 56) ]   ; deferred
+box: [ pen 0.0.200  fill-pen off  line-width 2
+       box (as-pair x y) (as-pair x + 120 y + 24) ]                 ; deferred
+
+report: compose/deep [ margin-20                                    ; (now/date) etc.
+    [DRAW-BG 3 bg]                                                  ; composes here
+    [HEADER [["Title" [h2] (now/date)]]]
+    [BODY   [["intro" [m]] [DRAW 30 box] ["outro" [m]]]]
+]
+```
+
+The same works for `[DRAW H ops]`. This keeps a single source of truth for geometry
+(the renderer) — nothing about page size is duplicated at build time.
 
 ---
 

@@ -131,22 +131,38 @@ parse-section: func [
                 pos: next pos
                 continue
             ]
-            ; DRAW-BG: optional integer pixel-density arg, then ONE raw draw block
+            ; DRAW-BG: optional integer pixel-density arg, then ONE raw draw block.
+            ; The block may also be given by name — a word bound to a block — which
+            ; lets a report built with compose/deep keep the draw ops (and their
+            ; render-time parens such as (as-pair page-width 56)) out of composition.
             if kw-type = 'draw-bg [
                 while [all [not tail? inner not block? inner/1 not paren? inner/1]][
-                    append kw-args inner/1
-                    inner: next inner
+                    either all [word? inner/1  block? attempt [get inner/1]][
+                        body: copy get inner/1
+                        inner: next inner
+                        break
+                    ][
+                        append kw-args inner/1
+                        inner: next inner
+                    ]
                 ]
                 if all [not tail? inner block? inner/1][body: copy inner/1]
                 append/only result object [type: kw-type args: kw-args lines: body]
                 pos: next pos
                 continue
             ]
-            ; DRAW: optional integer height arg, then ONE raw draw block (inline art)
+            ; DRAW: optional integer height arg, then ONE raw draw block (inline art);
+            ; the block may also be given by name, as for DRAW-BG above.
             if kw-type = 'draw [
                 while [all [not tail? inner not block? inner/1 not paren? inner/1]][
-                    append kw-args inner/1
-                    inner: next inner
+                    either all [word? inner/1  block? attempt [get inner/1]][
+                        body: copy get inner/1
+                        inner: next inner
+                        break
+                    ][
+                        append kw-args inner/1
+                        inner: next inner
+                    ]
                 ]
                 if all [not tail? inner block? inner/1][body: copy inner/1]
                 append/only result object [type: kw-type args: kw-args img: none lines: body]
