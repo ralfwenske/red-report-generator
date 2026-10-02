@@ -593,6 +593,18 @@ report-pdf: make report-styles [
         emit out ["h"]
     ]
 
+    pdf-draw-color: func [
+        "Resolve a draw pen/fill-pen arg to a tuple (or none): tuples pass through, color words are looked up, off -> none"
+        v [any-type!]
+    ][
+        case [
+            v = 'off     [none]
+            tuple? v    [v]
+            word? v     [attempt [get v]]
+            true        [none]
+        ]
+    ]
+
     emit-draw-ops: function [
         "Translate composed draw ops to vector PDF operators (out appended)"
         out [string!] ops [block!]
@@ -604,8 +616,8 @@ report-pdf: make report-styles [
             cmd: item/1
             args: item/2
             switch cmd [
-                pen [st/pen: either args/1 = 'off [none][args/1]]
-                fill-pen [st/fill: either args/1 = 'off [none][args/1]]
+                pen [st/pen: pdf-draw-color args/1]
+                fill-pen [st/fill: pdf-draw-color args/1]
                 line-width [if all [not empty? args  number? args/1][st/width: args/1]]
                 line-join [st/join: either args/1 = 'round [1][either args/1 = 'bevel [2][0]]]
                 line-cap [st/cap: either args/1 = 'round [1][either args/1 = 'square [2][0]]]

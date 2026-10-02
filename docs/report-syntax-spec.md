@@ -835,7 +835,8 @@ Both renderers reproduce one restricted subset; anything else is rejected by
 | state | `pen <tuple>` / `pen off`, `fill-pen <tuple>` / `fill-pen off`, `line-width`, `line-join` (miter/round/bevel), `line-cap` (flat/round/square), `anti-alias` |
 | shapes | `box p1 p2` and `box p1 p2 radius` (rounded), `circle c r`, `ellipse c r`, `line p1 p2`, `triangle p1 p2 p3`, `polygon p1 p2 …` |
 
-Colors are solid RGB tuples only. Not yet supported (validation error): `text`,
+Colors are solid RGB tuples or Red color words (`coffee`, `gold`, …); the PDF resolves
+named words the same way the View does. Not yet supported (validation error): `text`,
 `image`, gradients, `spline`/`arc`/`curve`/`dot`, `shape`/`draw` blocks, `clip`,
 `effect`, and any transform (`translate`/`scale`/`rotate`/`skew`/`matrix`).
 `polygon` takes its points as **separate arguments** (Red's draw dialect rejects a
