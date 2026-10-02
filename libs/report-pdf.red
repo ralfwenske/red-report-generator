@@ -1541,7 +1541,8 @@ report-pdf: make report-styles [
                     ]
                     frame [
                         ; v1: text-line items. Render them, measure, then splice the
-                        ; backdrop into the stream in front of them.
+                        ; backdrop into the stream in front of them. No internal page
+                        ; break: if the whole frame does not fit it moves to a new page.
                         frm-mark: length? page-content
                         frm-y0: page-y
                         box-reset
@@ -1550,16 +1551,25 @@ report-pdf: make report-styles [
                             lines: wrap-line fitm (either nowrap? fitm [1000000][col-w]) :line-measure
                             foreach l lines [
                                 if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
-                                lm: line-ink l :pdf-metrics
-                                if (page-y - lm/3) < page-bottom [
-                                    clear at page-content (frm-mark + 1)
-                                    new-page
-                                    frm-mark: length? page-content
-                                    frm-y0: page-y
-                                    prev-line: none
-                                ]
                                 render-pairs-line page-content l page-y
                                 prev-line: l
+                            ]
+                        ]
+                        ; overflowed and not already at the page top: redo on a fresh page
+                        if all [(page-y < page-bottom) (frm-y0 < usable-top)] [
+                            clear at page-content (frm-mark + 1)
+                            new-page
+                            frm-mark: length? page-content
+                            frm-y0: page-y
+                            box-reset
+                            prev-line: none
+                            foreach fitm line/lines [
+                                lines: wrap-line fitm (either nowrap? fitm [1000000][col-w]) :line-measure
+                                foreach l lines [
+                                    if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
+                                    render-pairs-line page-content l page-y
+                                    prev-line: l
+                                ]
                             ]
                         ]
                         set-track-box false

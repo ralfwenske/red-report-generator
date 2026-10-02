@@ -62,6 +62,7 @@ report-view: make report-styles [
     prev-draw?: false  ; previous BODY item was a DRAW (skip the block step-past)
     prev-box: none     ; [x y w h] draw-space box of the previous BODY item
     track-box?: false  ; when true, _emit-text-decorations records text box extents
+    in-frame?: false   ; while laying out a FRAME's contents (defer page breaks)
     box-min-x: none  box-min-y: none  box-max-x: none  box-max-y: none
     bg-cmds: copy []    ; DRAW-BG draw commands (applied to every page)
     current-hdr: none
@@ -977,7 +978,7 @@ report-view: make report-styles [
         foreach l lines [
             if prev-line [page-y: page-y - line-step l prev-line :view-metrics]
             lm: line-ink l :view-metrics
-            if (page-y - lm/3) < page-bottom [
+            if all [(page-y - lm/3) < page-bottom  not in-frame?][
                 new-page
                 if prev-line [page-y: page-y - line-step l prev-line :view-metrics]
             ]
@@ -1506,6 +1507,9 @@ report-view: make report-styles [
         ; FRAME: lay the items out to measure them, then draw the backdrop behind them
         _emit-frame: func [line [object!] /local pad y0 saved buffered fcx fcy fcw fch env][
             pad: either empty? line/args [0][line/args/1]
+            ; lay the contents out without internal page breaks so the whole frame
+            ; can be measured and moved as one unit
+            in-frame?: true
             y0: page-y
             saved: page-draw
             page-draw: copy []
@@ -1522,6 +1526,7 @@ report-view: make report-styles [
                 buffered: page-draw
                 page-draw: saved
             ]
+            in-frame?: false
             either box-min-x [
                 fcx: box-min-x  fcy: box-min-y
                 fcw: box-max-x - box-min-x  fch: box-max-y - box-min-y
