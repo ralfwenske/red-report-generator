@@ -176,8 +176,9 @@ line-item    := [ value style-block? value style-block? … ]
 
 - A *value* is any Red literal: `string!`, `number!`, `date!`, `tag!`, `issue!`, … (`none` → empty).
   To insert a computed value use a **paren**: `(now)`, `(total)`, `(backup-date)` — evaluated by
-  `compose/deep` at build time (§11). A bare `word!` is stored as-is and rendered literally, so
-  compute values with parens.
+  the parser at build time (§11). A **bare word** is rejected by validation (it would just print
+  its own name): write a string (`"text"`) or a paren (`(expr)`). `none` is the one exception and
+  means an empty value.
 - The *style-block* immediately following a value applies to that value only and is
   optional; it must not itself contain `string!` or `block!` values (that is how the
   parser tells a style block apart from a nested line).

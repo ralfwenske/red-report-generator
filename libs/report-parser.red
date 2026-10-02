@@ -32,6 +32,8 @@ parse-pairs: func [
     ]
     while [not tail? blk][
         val: blk/1
+        ; a bare `none` is the intended "empty value" (§4.1)
+        if all [word? val  val = 'none][val: none]
         sty: none
         blk: next blk
         if all [not tail? blk block? blk/1 is-style? blk/1][
@@ -493,6 +495,12 @@ parse-section: func [
     ][
         foreach pair ln [
             if all [(length? pair) >= 2 block? pair/2][
+                ; the value: a literal or a paren. A bare word would be rendered
+                ; literally as its name, which is almost always a mistake (a forgotten
+                ; string or quote). `none` is allowed and renders as empty.
+                if all [word? pair/1  pair/1 <> 'none][
+                    return rejoin [sec-name " line " i ": value '" mold pair/1 "' is a bare word; write it as a string (" form pair/1 ") or a paren like (" form pair/1 ") to compute it"]
+                ]
                 foreach s pair/2 [
                     unless style-word-ok? s [
                         return rejoin [sec-name " line " i ": unknown style word '" mold s "'" style-hint s]
