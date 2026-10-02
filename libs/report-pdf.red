@@ -513,10 +513,12 @@ report-pdf: make report-styles [
     draw-item-height: func [
         "Height a DRAW item consumes: explicit arg, else measured from its ops."
         line [object!] cursor-y [integer!]
-        /local h
+        /local h ops env
     ][
         either empty? line/args [
-            either h: draw-ops-height compose/deep bind copy line/lines draw-env 0 cursor-y [h][0]
+            env: draw-env 0 cursor-y
+            ops: compose/deep bind copy line/lines env
+            either h: draw-ops-height ops cursor-y [h][0]
         ][
             line/args/1
         ]

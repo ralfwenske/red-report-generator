@@ -486,10 +486,11 @@ report-view: make report-styles [
     draw-item-height: func [
         "Height a DRAW item consumes: explicit arg, else measured from its ops."
         line [object!]
-        /local h
+        /local h ops
     ][
         either empty? line/args [
-            either h: draw-ops-height _compose-draw line/lines 0 [h][0]
+            ops: _compose-draw line/lines 0
+            either h: draw-ops-height ops 0 [h][0]
         ][
             line/args/1
         ]

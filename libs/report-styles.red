@@ -1133,12 +1133,13 @@ report-styles: context [
         ]
     ]
 
+    draw-bottom-gap: 3    ; breathing room below a DRAW/FRAME auto-measured ink
+
     draw-ops-height: func [
         {Vertical space a composed draw ops block consumes below its placement
-         cursor y (draw space). Returns none when there is no shape to measure
-         below the cursor (the caller must then require an explicit H).}
+         cursor y (draw space), plus draw-bottom-gap. Used when DRAW omits its H.}
         ops [block!] y [integer!]
-        /local parsed pen-off? width acc item cmd args
+        /local parsed pen-off? width acc item cmd args h
     ][
         parsed: draw-parse ops
         if all [not empty? parsed  parsed/1 = 'error][return none]
@@ -1163,8 +1164,8 @@ report-styles: context [
             acc/1: acc/1 - to integer! (width / 2)
             acc/2: acc/2 + to integer! (width / 2)
         ]
-        if acc/2 < y [return none]
-        max 0 to integer! (acc/2 - y)
+        h: max 0 to integer! (acc/2 - y)
+        h + draw-bottom-gap
     ]
 
     ;=== Word wrap =============================================================
