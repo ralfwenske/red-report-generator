@@ -1000,6 +1000,27 @@ report-styles: context [
         none
     ]
 
+    draw-anomaly: func [
+        "First clear no-op in the draw ops (e.g. a line stroked while pen is off), or none"
+        ops [block!]
+        /local parsed item pen-off?
+    ][
+        parsed: draw-parse ops
+        if all [not empty? parsed  parsed/1 = 'error][return none]
+        pen-off?: false
+        foreach item parsed [
+            switch item/1 [
+                pen  [pen-off?: all [not empty? item/2  item/2/1 = 'off]]
+                line [
+                    if pen-off? [
+                        return "a 'line' is stroked with pen — set a pen colour (fill-pen does not affect a line)"
+                    ]
+                ]
+            ]
+        ]
+        none
+    ]
+
     draw-is-command?: func [v [any-type!]][
         all [word? v  not none? find draw-command-words to word! v]
     ]

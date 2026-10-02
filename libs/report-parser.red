@@ -780,6 +780,10 @@ parse-section: func [
                             if a [
                                 return rejoin [sec-name " line " i ": DRAW: unknown word '" mold a "' (use a color tuple or a Red color word)"]
                             ]
+                            a: report-styles/draw-anomaly ln/lines
+                            if a [
+                                return rejoin [sec-name " line " i ": DRAW: " a]
+                            ]
                             if all [empty? ln/args  not report-styles/draw-ops-height ln/lines 0] [
                                 return rejoin [sec-name " line " i ": DRAW has no measurable height below its cursor; add an explicit height, e.g. [DRAW 20 [...]]"]
                             ]
@@ -810,6 +814,10 @@ parse-section: func [
                             a: report-styles/draw-word-problem ln/ops
                             if a [
                                 return rejoin [sec-name " line " i ": FRAME: unknown word '" mold a "' (use a color tuple or a Red color word)"]
+                            ]
+                            a: report-styles/draw-anomaly ln/ops
+                            if a [
+                                return rejoin [sec-name " line " i ": FRAME: " a]
                             ]
                             if empty? ln/lines [
                                 return rejoin [sec-name " line " i ": FRAME has no items block"]
