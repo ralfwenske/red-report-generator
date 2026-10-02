@@ -971,6 +971,35 @@ report-styles: context [
         box 2  circle 2  ellipse 2  line 2  triangle 3  polygon 1
     ]
 
+    draw-state-words: [off on round miter bevel flat square butt]
+
+    draw-word-ok?: func [
+        "A bare word in draw ops must be a state value (off/round/…) or resolve to a color tuple"
+        w [word!]
+    ][
+        any [
+            not none? find draw-state-words w
+            tuple? attempt [get w]
+        ]
+    ]
+
+    draw-word-problem: func [
+        "First bare word in the ops that is neither a state value nor a resolvable color, or none"
+        ops [block!]
+        /local parsed item a
+    ][
+        parsed: draw-parse ops
+        if all [not empty? parsed  parsed/1 = 'error][return none]
+        foreach item parsed [
+            foreach a item/2 [
+                if word? a [
+                    unless draw-word-ok? a [return a]
+                ]
+            ]
+        ]
+        none
+    ]
+
     draw-is-command?: func [v [any-type!]][
         all [word? v  not none? find draw-command-words to word! v]
     ]

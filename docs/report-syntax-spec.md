@@ -836,9 +836,11 @@ Both renderers reproduce one restricted subset; anything else is rejected by
 | shapes | `box p1 p2` and `box p1 p2 radius` (rounded), `circle c r`, `ellipse c r`, `line p1 p2`, `triangle p1 p2 p3`, `polygon p1 p2 …` |
 
 Colors are solid RGB tuples or Red color words (`coffee`, `gold`, …); the PDF resolves
-named words the same way the View does. Not yet supported (validation error): `text`,
-`image`, gradients, `spline`/`arc`/`curve`/`dot`, `shape`/`draw` blocks, `clip`,
-`effect`, and any transform (`translate`/`scale`/`rotate`/`skew`/`matrix`).
+named words the same way the View does, and `validate-report` **rejects an unknown
+word** (e.g. `rebeccapurple`) instead of silently painting nothing. Not yet supported
+(validation error): `text`, `image`, gradients, `spline`/`arc`/`curve`/`dot`,
+`shape`/`draw` blocks, `clip`, `effect`, and any transform
+(`translate`/`scale`/`rotate`/`skew`/`matrix`).
 `polygon` takes its points as **separate arguments** (Red's draw dialect rejects a
 block form).
 

@@ -758,6 +758,10 @@ parse-section: func [
                             unless report-styles/draw-args-ok? ln/lines [
                                 return rejoin [sec-name " line " i ": DRAW: a command is missing its arguments"]
                             ]
+                            a: report-styles/draw-word-problem ln/lines
+                            if a [
+                                return rejoin [sec-name " line " i ": DRAW: unknown word '" mold a "' (use a color tuple or a Red color word)"]
+                            ]
                             if all [empty? ln/args  not report-styles/draw-ops-height ln/lines 0] [
                                 return rejoin [sec-name " line " i ": DRAW has no measurable height below its cursor; add an explicit height, e.g. [DRAW 20 [...]]"]
                             ]
@@ -784,6 +788,10 @@ parse-section: func [
                             ]
                             unless report-styles/draw-args-ok? ln/ops [
                                 return rejoin [sec-name " line " i ": FRAME: a command is missing its arguments"]
+                            ]
+                            a: report-styles/draw-word-problem ln/ops
+                            if a [
+                                return rejoin [sec-name " line " i ": FRAME: unknown word '" mold a "' (use a color tuple or a Red color word)"]
                             ]
                             if empty? ln/lines [
                                 return rejoin [sec-name " line " i ": FRAME has no items block"]
