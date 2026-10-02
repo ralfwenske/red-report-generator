@@ -1277,10 +1277,16 @@ report-pdf: make report-styles [
         foreach line ctn/lines [
             box-reset
             either object? line [
-                ; step past the preceding text line box before stacking a block
+                ; step past the preceding text line box before stacking a block.
+                ; DRAW draws from its top, so it hugs the previous line
+                ; (descent + gap); other blocks use half the line box.
                 if all [prev-line not prev-draw?] [
                     lm: line-ink prev-line :pdf-metrics
-                    page-y: page-y - lm/2 - line-gap-px
+                    page-y: page-y - either line/type = 'draw [
+                        lm/3 + line-gap-px
+                    ][
+                        lm/2 + line-gap-px
+                    ]
                 ]
                 prev-line: none
                 y0: page-y
