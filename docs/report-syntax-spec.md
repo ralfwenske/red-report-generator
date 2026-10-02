@@ -811,18 +811,23 @@ bound inside the block:
 | `page-width`,`page-height` | page size in points |
 | `margin-left/right/top/bottom` | content margins |
 
-Because `prev-*` is the full box of the previous element, a frame is simply a `box`
-drawn 4–5 px outside it (as above). A following DRAW and a following text line both
-continue below the art: text after a DRAW steps one gap below it, so the art does
-not overlap the text.
+A DRAW starts at the cursor, and the cursor sits just below the previous value-line
+(its descent + the 1 px line gap) — so a rule drawn at `y` lands directly under the
+preceding line. (Other blocks, e.g. TABLE/IMAGE, step past by half the line box.)
+`prev-*` is the full box of the previous element, so a frame around a wrapped
+paragraph is simply a `box` drawn 4–5 px outside it. Following text continues below
+the art, one line gap under the consumed height.
 
 ### 16.3 Height (`H`) and measuring
 
 - `H` is the vertical space the item consumes; the next item's top is `H` below the
   cursor. `H = 0` is allowed (pure decoration that does not advance the flow).
-- If `H` is omitted, the renderer measures the ops (the extent **below the cursor**,
-  including stroke width). This only works with **literal** coordinates: a paren
-  that references `x`/`h`/`prev-*` cannot be measured, so such blocks must give `H`.
+- If `H` is omitted, the renderer measures the ops: the ink extent **below the
+  cursor** (including stroke half-width) **plus `draw-bottom-gap` (3 px)**. This only
+  works with **literal** coordinates: a paren that references `x`/`h`/`prev-*` cannot
+  be measured, so such blocks must give `H`.
+- To move the *art* rather than the following line, offset it in the ops, e.g.
+  `line (as-pair x (y + 4)) …`; to leave more/less room below it, set `H`.
 - To clear a frame's overhang below its paragraph, use an `H` a few points larger
   than the overhang (e.g. `[DRAW 10 […]]` with a 5 px frame margin).
 
@@ -843,7 +848,8 @@ word** (e.g. `rebeccapurple`) instead of silently painting nothing. Not yet supp
 `shape`/`draw` blocks, `clip`, `effect`, and any transform
 (`translate`/`scale`/`rotate`/`skew`/`matrix`).
 `polygon` takes its points as **separate arguments** (Red's draw dialect rejects a
-block form).
+block form). A `line` is a **stroke** — it is drawn with `pen`; `fill-pen` has no
+effect on it (validation flags a `line` drawn while `pen` is off).
 
 DRAW is currently **BODY-only**; `HEADER`/`FOOTER` items would sit above/below the
 content stream and need separate height accounting, so they are rejected for now.
