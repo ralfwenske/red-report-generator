@@ -458,6 +458,30 @@ report-view: make report-styles [
         compose/deep bind copy ops draw-env hh
     ]
 
+    ; Binding context for a FRAME's ops: the padded frame box (x/y/w/h) and the
+    ; measured content box (cx/cy/cw/ch) in draw space, plus the padding.
+    frame-env: func [
+        fx [integer!] fy [integer!] fw [integer!] fh [integer!]
+        cx [integer!] cy [integer!] cw [integer!] ch [integer!] pad [integer!]
+        /local e
+    ][
+        e: make object! [
+            page-width: 100 page-height: 100
+            margin-left: 0 margin-right: 0 margin-top: 0 margin-bottom: 0
+            x: 0 y: 0 w: 0 h: 0  cx: 0 cy: 0 cw: 0 ch: 0  pad: 0
+        ]
+        set in e 'page-width page-width
+        set in e 'page-height page-height
+        set in e 'margin-left margin-left
+        set in e 'margin-right margin-right
+        set in e 'margin-top margin-top
+        set in e 'margin-bottom margin-bottom
+        set in e 'x fx  set in e 'y fy  set in e 'w fw  set in e 'h fh
+        set in e 'cx cx  set in e 'cy cy  set in e 'cw cw  set in e 'ch ch
+        set in e 'pad pad
+        e
+    ]
+
     draw-item-height: func [
         "Height a DRAW item consumes: explicit arg, else measured from its ops."
         line [object!]
@@ -1416,8 +1440,9 @@ report-view: make report-styles [
         prev-line: if all [current-hdr not empty? current-hdr/lines][last current-hdr/lines][none]
 
         ww: max 1 (page-width - margin-left - margin-right)
-        foreach line page-obj/content/lines [
-            box-reset
+
+        ; one content item (text line or block); box accumulation is the caller's job
+        emit-item: func [line [block! object!] /local y0][
             either object? line [
                 ; step past the preceding text line box before stacking a block
                 if all [prev-line not prev-draw?] [
@@ -1444,13 +1469,16 @@ report-view: make report-styles [
                             if (page-y - (line/args/1 * line-height)) < page-bottom [new-page]
                         ]
                     ]
+                    frame [_emit-frame line]
                 ]
-                prev-draw?: line/type = 'draw
-                ; record the item's box for a following DRAW's prev-* words
-                box-note margin-left (to-draw-y y0) (margin-left + ww) (to-draw-y page-y)
-                ; after a DRAW leave a zero-descent marker so the next text line
-                ; steps below the art (a following block skips the step)
-                either prev-draw? [prev-line: copy []][prev-line: none]
+                unless line/type = 'frame [
+                    prev-draw?: line/type = 'draw
+                    ; record the item's box for a following DRAW's prev-* words
+                    box-note margin-left (to-draw-y y0) (margin-left + ww) (to-draw-y page-y)
+                    ; after a DRAW leave a zero-descent marker so the next text line
+                    ; steps below the art (a following block skips the step)
+                    either prev-draw? [prev-line: copy []][prev-line: none]
+                ]
             ][
                 if block? line [
                     track-box?: true
@@ -1459,8 +1487,56 @@ report-view: make report-styles [
                     prev-draw?: false
                 ]
             ]
-            box-finish
         ]
+
+        ; a run of content items; /accumulate keeps one box spanning the whole run
+        emit-items: func [lines [block!] /accumulate /local line][
+            if accumulate [box-reset  track-box?: true]
+            foreach line lines [
+                unless accumulate [box-reset]
+                if accumulate [track-box?: true]
+                emit-item line
+                unless accumulate [
+                    unless all [object? line  line/type = 'frame][box-finish]
+                ]
+            ]
+            if accumulate [track-box?: false  box-finish]
+        ]
+
+        ; FRAME: lay the items out to measure them, then draw the backdrop behind them
+        _emit-frame: func [line [object!] /local pad y0 saved buffered fcx fcy fcw fch env][
+            pad: either empty? line/args [0][line/args/1]
+            y0: page-y
+            saved: page-draw
+            page-draw: copy []
+            emit-items/accumulate line/lines
+            buffered: page-draw
+            page-draw: saved
+            ; if it overflowed and we were not already at the page top, redo on a fresh page
+            if all [(page-y < page-bottom) (y0 < usable-top)] [
+                new-page
+                y0: page-y
+                saved: page-draw
+                page-draw: copy []
+                emit-items/accumulate line/lines
+                buffered: page-draw
+                page-draw: saved
+            ]
+            either box-min-x [
+                fcx: box-min-x  fcy: box-min-y
+                fcw: box-max-x - box-min-x  fch: box-max-y - box-min-y
+            ][
+                fcx: margin-left  fcw: ww  fcy: to-draw-y y0  fch: y0 - page-y
+            ]
+            env: frame-env (fcx - pad) (fcy - pad) (fcw + (2 * pad)) (fch + (2 * pad)) fcx fcy fcw fch pad
+            append page-draw compose/deep bind copy line/ops env
+            append page-draw buffered
+            prev-box: reduce [fcx - pad  fcy - pad  fcw + (2 * pad)  fch + (2 * pad)]
+            prev-draw?: true
+            prev-line: copy []
+        ]
+
+        emit-items page-obj/content/lines
 
         append/only pages page-draw
         append/only page-hotspots hotspots

@@ -145,7 +145,7 @@ makes it a keyword item, anything else makes it a *line*:
 item        := keyword-item | line-item
 
 keyword-item := [ known-word args… [items]? ]   ; trailing items block optional
-known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK | DRAW
+known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK | DRAW | FRAME
 args         := values up to the first block (words, numbers, files, issues, …)
 
 line-item    := [ value style-block? value style-block? … ]
@@ -856,14 +856,42 @@ content stream and need separate height accounting, so they are rejected for now
 
 ### 16.6 Ideas kept out of the current surface
 
-- `[FRAME 6 [ …items… ]]` — a grouping keyword that lays out its contents first, then
-  draws a background/frame behind them. This is what you need for a **fill behind** a
-  wrapping paragraph (inline DRAW can only frame on top; the paragraph's height is not
-  known before it is laid out).
 - `text` and `image` inside DRAW, and inline-in-a-line DRAW (where `x` is the right
   edge of the previous value).
 
-### 16.7 Parens, `compose/deep`, and DRAW
+### 16.7 FRAME — a measured backdrop
+
+`[FRAME R [draw-ops] [items]]` lays out its `items` (BODY text lines) to **measure**
+them, then draws the `draw-ops` backdrop **behind** them. `R` is the padding around
+the measured content box (integer, default 0).
+
+This is the way to fill behind a wrapping paragraph: `DRAW` runs after its element
+and can only paint *on top*, and the paragraph's height isn't known until it is laid
+out.
+
+```red
+[FRAME 8 [
+    pen 90.120.200  fill-pen 238.242.255  line-width 1
+    box (as-pair x y) (as-pair x + w y + h) 6      ; rounded backdrop
+] [
+    ["A paragraph that wraps, framed from behind." [b]]
+    ["A second line." [m]]
+]]
+```
+
+Bound words inside the ops (page/draw space, top-down): `x y w h` = the **padded
+frame box** (content + `R`); `cx cy cw ch` = the measured **content box**; `pad` = `R`;
+plus `page-width`, `page-height`, `margin-*`. The ops are the same allowlisted draw
+subset as DRAW (§16.4), rendered as native vector by both renderers.
+
+Notes:
+
+- FRAME is BODY-only; items are text lines (v1).
+- FRAME acts like a block in the flow: preceding text is stepped past, and following
+  content continues below the frame; `prev-*` for a following DRAW is the padded box.
+- On overflow it restarts on a fresh page (View and PDF).
+
+### 16.8 Parens, `compose/deep`, and DRAW
 
 DRAW and DRAW-BG parens are evaluated at **render** time, with the page geometry in
 scope (`page-width`, `page-height`, `margin-*`, and for DRAW the cursor/`prev-*`

@@ -486,6 +486,30 @@ report-pdf: make report-styles [
         e
     ]
 
+    ; Binding context for a FRAME's ops: the padded frame box (x/y/w/h) and the
+    ; measured content box (cx/cy/cw/ch) in draw space, plus the padding.
+    frame-env: func [
+        fx [integer!] fy [integer!] fw [integer!] fh [integer!]
+        cx [integer!] cy [integer!] cw [integer!] ch [integer!] pad [integer!]
+        /local e
+    ][
+        e: make object! [
+            page-width: 100 page-height: 100
+            margin-left: 0 margin-right: 0 margin-top: 0 margin-bottom: 0
+            x: 0 y: 0 w: 0 h: 0  cx: 0 cy: 0 cw: 0 ch: 0  pad: 0
+        ]
+        set in e 'page-width page-width
+        set in e 'page-height page-height
+        set in e 'margin-left margin-left
+        set in e 'margin-right margin-right
+        set in e 'margin-top margin-top
+        set in e 'margin-bottom margin-bottom
+        set in e 'x fx  set in e 'y fy  set in e 'w fw  set in e 'h fh
+        set in e 'cx cx  set in e 'cy cy  set in e 'cw cw  set in e 'ch ch
+        set in e 'pad pad
+        e
+    ]
+
     draw-item-height: func [
         "Height a DRAW item consumes: explicit arg, else measured from its ops."
         line [object!] cursor-y [integer!]
@@ -569,13 +593,11 @@ report-pdf: make report-styles [
         emit out ["h"]
     ]
 
-    emit-draw: function [
-        "Translate an inline [DRAW H [ops]] item to vector PDF operators; returns its height."
-        out [string!] line [object!] cursor-y [integer!]
-        /local hh ops parsed st item cmd args x0 x1 y0d y1d pts pp r rx ry
+    emit-draw-ops: function [
+        "Translate composed draw ops to vector PDF operators (out appended)"
+        out [string!] ops [block!]
+        /local parsed st item cmd args x0 x1 y0d y1d pts pp r rx ry
     ][
-        hh: draw-item-height line cursor-y
-        ops: compose/deep bind copy line/lines draw-env hh cursor-y
         parsed: draw-parse ops
         st: make object! [fill: none pen: 0.0.0 width: 1 join: 0 cap: 0]
         foreach item parsed [
@@ -656,6 +678,16 @@ report-pdf: make report-styles [
                 ]
             ]
         ]
+    ]
+
+    emit-draw: function [
+        "Translate an inline [DRAW H [ops]] item to vector PDF operators; returns its height."
+        out [string!] line [object!] cursor-y [integer!]
+        /local hh ops parsed st item cmd args x0 x1 y0d y1d pts pp r rx ry
+    ][
+        hh: draw-item-height line cursor-y
+        ops: compose/deep bind copy line/lines draw-env hh cursor-y
+        emit-draw-ops out ops
         hh
     ]
 
@@ -1495,13 +1527,55 @@ report-pdf: make report-styles [
                         emit-draw page-content line y0
                         page-y: page-y - dh
                     ]
+                    frame [
+                        ; v1: text-line items. Render them, measure, then splice the
+                        ; backdrop into the stream in front of them.
+                        frm-mark: length? page-content
+                        frm-y0: page-y
+                        box-reset
+                        set-track-box true
+                        foreach fitm line/lines [
+                            lines: wrap-line fitm (either nowrap? fitm [1000000][col-w]) :line-measure
+                            foreach l lines [
+                                if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
+                                lm: line-ink l :pdf-metrics
+                                if (page-y - lm/3) < page-bottom [
+                                    clear at page-content (frm-mark + 1)
+                                    new-page
+                                    frm-mark: length? page-content
+                                    frm-y0: page-y
+                                    prev-line: none
+                                ]
+                                render-pairs-line page-content l page-y
+                                prev-line: l
+                            ]
+                        ]
+                        set-track-box false
+                        either box-min-x [
+                            fcx: box-min-x  fcy: box-min-y
+                            fcw: box-max-x - box-min-x  fch: box-max-y - box-min-y
+                        ][
+                            fcx: margin-left  fcw: ww  fcy: page-height - frm-y0  fch: frm-y0 - page-y
+                        ]
+                        fpad: either empty? line/args [0][line/args/1]
+                        env: frame-env (fcx - fpad) (fcy - fpad) (fcw + (2 * fpad)) (fch + (2 * fpad)) fcx fcy fcw fch fpad
+                        fops: copy ""
+                        emit-draw-ops fops compose/deep bind copy line/ops env
+                        insert at page-content (frm-mark + 1) fops
+                        box-finish
+                        prev-box: reduce [fcx - fpad  fcy - fpad  fcw + (2 * fpad)  fch + (2 * fpad)]
+                        prev-draw?: true
+                        prev-line: copy []
+                    ]
                 ]
-                prev-draw?: line/type = 'draw
-                ; record the item's box for a following DRAW's prev-* words
-                box-note margin-left (page-height - y0) (margin-left + ww) (page-height - page-y)
-                ; after a DRAW leave a zero-descent marker so the next text line
-                ; steps below the art (a following block skips the step)
-                either prev-draw? [prev-line: copy []][prev-line: none]
+                unless line/type = 'frame [
+                    prev-draw?: line/type = 'draw
+                    ; record the item's box for a following DRAW's prev-* words
+                    box-note margin-left (page-height - y0) (margin-left + ww) (page-height - page-y)
+                    ; after a DRAW leave a zero-descent marker so the next text line
+                    ; steps below the art (a following block skips the step)
+                    either prev-draw? [prev-line: copy []][prev-line: none]
+                ]
             ][
                 if block? line [
                     set-track-box true
@@ -1520,7 +1594,7 @@ report-pdf: make report-styles [
                     prev-draw?: false
                 ]
             ]
-            box-finish
+            unless all [object? line  line/type = 'frame][box-finish]
         ]
 
         append pages page-content

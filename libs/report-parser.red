@@ -43,7 +43,7 @@ parse-pairs: func [
     result
 ]
 
-known-keywords: [header body footer table image column pagebreak draw-bg draw]
+known-keywords: [header body footer table image column pagebreak draw-bg draw frame]
 paper-sizes:    [a4 letter legal a3 a5]
 margin-sides:   [top bottom left right margin]
 
@@ -66,7 +66,7 @@ parse-section: func [
      Uniform item grammar: [known-word args... [items]?]  |  [value [styles]? ...]}
     blk [block!]
     /base bs [block!]
-    /local result pos val kw-type kw-args body inner cbs ta a col-img
+    /local result pos val kw-type kw-args body inner cbs ta a col-img frm-ops
 ][
     result: copy []
     pos: blk
@@ -92,6 +92,7 @@ parse-section: func [
             kw-args: copy []
             body: copy []
             col-img: none
+            frm-ops: none
             inner: next pos/1
             ; COLUMN: optional "image [styles]" clause after the text args carries the styles
             ; for contained IMAGE rows; the last block is the items. Generic args (before the
@@ -128,6 +129,25 @@ parse-section: func [
                     ]
                 ]
                 append/only result object [type: kw-type args: kw-args img: col-img lines: body]
+                pos: next pos
+                continue
+            ]
+            ; FRAME: optional integer padding, then [draw-ops] (raw, evaluated by the
+            ; renderer with the measured content box) and [items] (the framed content).
+            if kw-type = 'frame [
+                while [all [not tail? inner not block? inner/1 not paren? inner/1]][
+                    append kw-args inner/1
+                    inner: next inner
+                ]
+                if all [not tail? inner block? inner/1][
+                    frm-ops: copy inner/1
+                    inner: next inner
+                ]
+                if all [not tail? inner block? inner/1][
+                    body: parse-section/base inner/1 bs
+                    inner: next inner
+                ]
+                append/only result object [type: kw-type args: kw-args img: none lines: body ops: frm-ops]
                 pos: next pos
                 continue
             ]
@@ -236,18 +256,50 @@ parse-section: func [
         all [not empty? b  word? b/1  not none? find [draw draw-bg] to word! b/1]
     ]
 
+    frame-item-block?: func [b [block!]][
+        all [not empty? b  word? b/1  (to word! b/1) = 'frame]
+    ]
+
+    protect-frame: func [
+        "Stash a FRAME's [draw-ops] block; leave its [items] blocks for compose/deep"
+        e [block!] stashed [block!]
+        /local out first-block? x
+    ][
+        out: copy []
+        first-block?: true
+        foreach x e [
+            either block? x [
+                either first-block? [
+                    append/only stashed copy/deep x
+                    append out to word! rejoin ["__draw-marker-" length? stashed]
+                    first-block?: false
+                ][
+                    append/only out defer-draws x stashed
+                ]
+            ][
+                append/only out x
+            ]
+        ]
+        out
+    ]
+
     defer-draws: func [
-        "Replace DRAW/DRAW-BG items with placeholders so compose/deep skips them"
+        "Replace DRAW/DRAW-BG items (and FRAME ops) with placeholders so compose/deep skips them"
         blk [block!] stashed [block!]
         /local out e
     ][
         out: copy []
         foreach e blk [
-            either all [block? e  draw-item-block? e][
-                append/only stashed copy/deep e
-                append out to word! rejoin ["__draw-marker-" length? stashed]
-            ][
-                append/only out either block? e [defer-draws e stashed][e]
+            case [
+                all [block? e  draw-item-block? e][
+                    append/only stashed copy/deep e
+                    append out to word! rejoin ["__draw-marker-" length? stashed]
+                ]
+                all [block? e  frame-item-block? e][
+                    append/only out protect-frame e stashed
+                ]
+                block? e [append/only out defer-draws e stashed]
+                true [append/only out e]
             ]
         ]
         out
@@ -584,7 +636,7 @@ parse-section: func [
                 either find [header body footer] ln/type [
                         return rejoin [sec-name " line " i ": '" ln/type "' is a section keyword; sections are only allowed at the top level"]
                     ][
-                        unless find [table image column pagebreak draw] ln/type [
+                        unless find [table image column pagebreak draw frame] ln/type [
                             return rejoin [sec-name " line " i ": unknown keyword '" ln/type]
                         ]
                     ]
@@ -708,6 +760,40 @@ parse-section: func [
                             ]
                             if all [empty? ln/args  not report-styles/draw-ops-height ln/lines 0] [
                                 return rejoin [sec-name " line " i ": DRAW has no measurable height below its cursor; add an explicit height, e.g. [DRAW 20 [...]]"]
+                            ]
+                        ]
+                        frame [
+                            unless sec-name = "BODY" [
+                                return rejoin [sec-name " line " i ": FRAME is only supported inside BODY"]
+                            ]
+                            if (length? ln/args) > 1 [
+                                return rejoin [sec-name " line " i ": FRAME takes at most one padding (integer), got " mold ln/args]
+                            ]
+                            if all [not empty? ln/args not integer? ln/args/1] [
+                                return rejoin [sec-name " line " i ": FRAME padding must be an integer, got " mold ln/args/1]
+                            ]
+                            if all [not empty? ln/args ln/args/1 < 0] [
+                                return rejoin [sec-name " line " i ": FRAME padding must be 0 or more"]
+                            ]
+                            unless block? ln/ops [
+                                return rejoin [sec-name " line " i ": FRAME needs a draw block, e.g. [FRAME 6 [box ...] [items]]"]
+                            ]
+                            parsed: report-styles/draw-parse ln/ops
+                            if all [not empty? parsed  parsed/1 = 'error][
+                                return rejoin [sec-name " line " i ": FRAME: unsupported draw command '" mold parsed/2 "' (see 'Advanced usage - raw draw')"]
+                            ]
+                            unless report-styles/draw-args-ok? ln/ops [
+                                return rejoin [sec-name " line " i ": FRAME: a command is missing its arguments"]
+                            ]
+                            if empty? ln/lines [
+                                return rejoin [sec-name " line " i ": FRAME has no items block"]
+                            ]
+                            foreach r ln/lines [
+                                unless block? r [
+                                    return rejoin [sec-name " line " i ": FRAME items must be text lines"]
+                                ]
+                                msg: check-line-styles sec-name i r
+                                if msg [return msg]
                             ]
                         ]
                     ]
