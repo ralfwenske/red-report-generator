@@ -1472,7 +1472,9 @@ report-view: make report-styles [
                     ]
                     frame [_emit-frame line]
                 ]
-                unless line/type = 'frame [
+                ; a PAGEBREAK already started a new page and set prev-line to the
+                ; last header line; keep it so the next text steps below the header
+                unless any [line/type = 'frame  line/type = 'pagebreak][
                     prev-draw?: line/type = 'draw
                     ; record the item's box for a following DRAW's prev-* words
                     box-note margin-left (to-draw-y y0) (margin-left + ww) (to-draw-y page-y)
