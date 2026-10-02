@@ -66,7 +66,7 @@ parse-section: func [
      Uniform item grammar: [known-word args... [items]?]  |  [value [styles]? ...]}
     blk [block!]
     /base bs [block!]
-    /local result pos val kw-type kw-args body inner cbs ta a col-img frm-ops
+    /local result pos val kw-type kw-args body inner cbs ta a col-img frm-ops leftover
 ][
     result: copy []
     pos: blk
@@ -214,6 +214,7 @@ parse-section: func [
                 all [not tail? inner paren? inner/1][
                     val: do inner/1
                     if block? val [body: parse-section/base val cbs]
+                    inner: next inner
                 ]
                 all [not tail? inner block? inner/1][
                     either all [kw-type = 'image  not empty? inner/1  not block? inner/1/1][
@@ -222,9 +223,13 @@ parse-section: func [
                     ][
                         body: parse-section/base inner/1 cbs
                     ]
+                    inner: next inner
                 ]
             ]
-            append/only result object [type: kw-type args: kw-args lines: body]
+            ; anything after the items block is unexpected for a keyword item
+            ; (a section silently losing a following block is a common bracket slip)
+            leftover: either tail? inner [copy []][copy inner]
+            append/only result object [type: kw-type args: kw-args lines: body extra: leftover]
             pos: next pos
             continue
         ]
@@ -342,7 +347,7 @@ parse-section: func [
          Default paper is a4 portrait. Parenthesised expressions are evaluated here
          (DRAW/DRAW-BG ops kept deferred), so a literal report needs no compose/deep.}
         page [block!]
-        /local items h-args h-lines c-args c-lines f-args f-lines has-body bg-args bg-lines
+        /local items h-args h-lines c-args c-lines f-args f-lines h-extra c-extra f-extra has-body bg-args bg-lines
                size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right
     ][
         ; evaluate the template's parens once (DRAW/DRAW-BG ops stay deferred)
@@ -382,15 +387,16 @@ parse-section: func [
         m-right:  any [r-n m-u 50]
 
         h-args: h-lines: c-args: c-lines: f-args: f-lines: bg-args: bg-lines: copy []
+        h-extra: c-extra: f-extra: copy []
         has-body: false
 
         items: parse-section/base pos report-styles/base-styles
         foreach it items [
             if all [object? it find [header body footer] it/type][
                 switch it/type [
-                    header [h-args: it/args  h-lines: it/lines]
-                    body   [c-args: it/args  c-lines: it/lines  has-body: true]
-                    footer [f-args: it/args  f-lines: it/lines]
+                    header [h-args: it/args  h-lines: it/lines  h-extra: it/extra]
+                    body   [c-args: it/args  c-lines: it/lines  c-extra: it/extra  has-body: true]
+                    footer [f-args: it/args  f-lines: it/lines  f-extra: it/extra]
                 ]
             ]
             if all [object? it it/type = 'draw-bg][
@@ -405,9 +411,9 @@ parse-section: func [
             paper:       reduce [size-n orient-n]
             paper-args:  clause
             margin:      object [top: m-top bottom: m-bottom left: m-left right: m-right]
-            header:  object [args: h-args lines: h-lines]
-            content: object [args: c-args lines: c-lines]
-            footer:  object [args: f-args lines: f-lines]
+            header:  object [args: h-args lines: h-lines extra: h-extra]
+            content: object [args: c-args lines: c-lines extra: c-extra]
+            footer:  object [args: f-args lines: f-lines extra: f-extra]
             draw-bg: object [args: bg-args lines: bg-lines]
         ]
     ]
@@ -566,7 +572,7 @@ parse-section: func [
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a bg parsed
+        /local err pg msg ln i row a bg parsed w
     ][
         ;--- Cheap structural pre-check (catches unknown keywords/directives) ---
         msg: page-problem page
@@ -616,6 +622,10 @@ parse-section: func [
         ][
             unless all [object? sec block? sec/lines][
                 return rejoin [sec-name ": section missing or malformed"]
+            ]
+            w: in sec 'extra
+            if all [w  not empty? get w][
+                return rejoin [sec-name ": unexpected content after its items block — did you forget a ']' before the next section? (got " mold first get w ")"]
             ]
             foreach a sec/args [
                 unless style-word-ok? a [
