@@ -241,29 +241,22 @@ report-styles: context [
         none
     ]
 
-    ; Style words are never colors; resolve-colors stops at them (colors must be last).
+    ; Style words are never colors; a colour word anywhere in the block is
+    ; resolved to its tuple (colours may be interleaved with other styles).
     style-words: [b i u s m ss h1 h2 h3 < > ^ blank money s1000 date time datetime shadow border wrap nowrap !u]
 
     resolve-colors: func [
-        "Resolve trailing color words to tuples. Colors must be last in style block; style words are never colors."
+        "Resolve every colour word in a style block to a tuple, wherever it appears"
         styles [block!]
-        /local result len s val
+        /local result i s val
     ][
         result: copy styles
-        len: length? result
-        while [len > 0][
-            s: pick result len
-            case [
-                tuple? s [len: len - 1]
-                all [word? s  not find style-words s][
-                    val: attempt [get s]
-                    if none? :val [break]
-                    either tuple? :val [
-                        poke result len val
-                        len: len - 1
-                    ][break]
-                ]
-                true [break]
+        i: 0
+        foreach s result [
+            i: i + 1
+            if all [word? s  not find style-words s][
+                val: attempt [get s]
+                if tuple? :val [poke result i val]
             ]
         ]
         result
@@ -311,20 +304,22 @@ report-styles: context [
     ]
 
     style-split: func [
-        "Split a style block into [directives colors]; colors = the trailing tuples/color words"
+        {Split a style block into [directives colors]. Colours are every tuple or
+         colour word in the block, in order, wherever they appear; directives are
+         the remaining atoms, in order.}
         st [block!]
         /local dir col s
     ][
-        dir: copy st
+        dir: copy []
         col: copy []
-        while [not empty? dir][
-            s: last dir
-            either any [tuple? s all [word? s tuple? attempt [get s]]][
-                append col first back tail dir
-                remove back tail dir
-            ][break]
+        foreach s st [
+            either any [tuple? s  all [word? s  tuple? attempt [get s]]][
+                append col s
+            ][
+                append dir s
+            ]
         ]
-        reduce [dir reverse col]
+        reduce [dir col]
     ]
 
     merge-styles: func [

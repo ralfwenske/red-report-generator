@@ -37,6 +37,9 @@ The grammar below uses:
 - `( … )` — optional, or a Red parenthesized expression to be evaluated (see §11).
 - `x | y` — alternatives. `*` — zero or more. `+` — one or more.
 - Keywords are shown uppercase for readability; matching is **case-insensitive** (verified; see §11.3).
+- `word/value` — a path-qualified argument: `ss/10` ≡ `ss-10`, `margin/20` ≡ `margin-20`,
+  `left/25` ≡ `left-25`, `link/2` ≡ `link-2`. Both spellings are accepted; the path form
+  is canonical (a 2-component path is normalised to the dash word before parsing).
 
 ## 3. Document structure
 
@@ -329,7 +332,7 @@ proposal suggested "center if no alignment given" — *not* adopted; `'^` was ke
 | `ss` | sans-serif font |
 | `m` | monospace font (widths are `length × cell advance`, independent of font ligatures, so the View and PDF agree) |
 | `h1` / `h2` / `h3` | heading levels, font sizes 24 / 18 / 14 pt |
-| `word-N` | any style word may carry a `-N` size suffix (points), e.g. `i-8` (italic 8), `m-10` (mono 10), `ss-12` (sans 12), `h2-20`; it sets that value's font size, or the whole line when used in the line's leading style block |
+| `word-N` or `word/N` | any style word may carry a size suffix (points), e.g. `i-8`/`i/8` (italic 8), `m-10`/`m/10` (mono 10), `ss-12`/`ss/12` (sans 12), `h2-20`/`h2/20`; it sets that value's font size, or the whole line when used in the line's leading style block |
 
 ### 5.3 Value formatting
 
@@ -382,17 +385,20 @@ when the values share a style.
 
 ### 5.5 Colors
 
-Colors are the **last styles in the block** and may be given as:
+Colors may appear **anywhere** in a style block (interleaved with other styles, not only
+last) and may be given as:
 
 - a tuple: `255.165.0` (RGB);
 - a word resolving (in the **global** namespace) to a tuple — Red's predefined
   color words (`red`, `blue`, `green`, `yellow`, `black`, `white`, `gray`,
-  `purple`, …) or any user-defined global tuple word.
+  `purple`, `coffee`, …) or any user-defined global tuple word.
 
-Tuple position defines the role (1st = font color, 2nd = background, 3rd = frame/border):
+Their **relative order** defines the role (1st = font color, 2nd = background,
+3rd = frame/border), regardless of where they sit among the other styles:
 
 ```red
 ["text" [b 255.0.0 0.128.0 10.10.10]]   ; bold red text, dark-green bg, gray frame
+["text" [red b 0.128.0 10.10.10]]       ; colours first, decoration after — same result
 ["text" [h1 red]]                       ; heading, red font
 ```
 

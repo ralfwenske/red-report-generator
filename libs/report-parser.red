@@ -267,6 +267,21 @@ parse-section: func [
         all [not empty? b  word? b/1  (to word! b/1) = 'frame]
     ]
 
+    norm-arg: func [
+        {Normalise a qualified argument: a 2-component path base/value becomes the
+         equivalent dash word (ss/10 -> ss-10, margin/20 -> margin-20, link/2 -> link-2);
+         any other value is returned unchanged.}
+        v [any-type!]
+        /local p a b
+    ][
+        if not path? v [return v]
+        p: v
+        if (length? p) <> 2 [return v]
+        a: pick p 1  b: pick p 2
+        unless all [any [word? a  integer? a]  any [word? b  integer? b]][return v]
+        to word! rejoin [form a "-" form b]
+    ]
+
     protect-frame: func [
         "Stash a FRAME's [draw-ops] block; leave its [items] blocks for compose/deep"
         e [block!] stashed [block!]
@@ -306,7 +321,7 @@ parse-section: func [
                     append/only out protect-frame e stashed
                 ]
                 block? e [append/only out defer-draws e stashed]
-                true [append/only out e]
+                true [append/only out either path? e [norm-arg e][e]]
             ]
         ]
         out
@@ -536,23 +551,26 @@ parse-section: func [
         page [block!]
         /local pos d w
     ][
-        ; leading paper clause: words and/or a WxH pair
+        ; leading paper clause: words, qualified args (margin/20) and/or a WxH pair
         pos: page
-        while [all [not tail? pos any [word? pos/1 pair? pos/1]]][
+        while [all [not tail? pos any [word? pos/1 pair? pos/1 path? pos/1]]][
             d: pos/1
-            if word? d [
-                w: to word! d
-                case [
-                    find paper-sizes w []
-                    find [landscape portrait] w []
-                    parse-margin-spec d []
-                    find known-keywords w [
-                        return rejoin ["Section keyword '" mold d "' must be written as a block item, e.g. [" form w " [...]]"]
-                    ]
-                    true [
-                        return rejoin [
-                            "Unknown word '" mold d
-                            "' (expected a paper size a4/a5/a3/letter/legal, a WxH pair, landscape/portrait, a margin like margin-20, or a block item like [BODY [...]])"
+            case [
+                path? d []                          ; qualified arg; normalised later
+                word? d [
+                    w: to word! d
+                    case [
+                        find paper-sizes w []
+                        find [landscape portrait] w []
+                        parse-margin-spec d []
+                        find known-keywords w [
+                            return rejoin ["Section keyword '" mold d "' must be written as a block item, e.g. [" form w " [...]]"]
+                        ]
+                        true [
+                            return rejoin [
+                                "Unknown word '" mold d
+                                "' (expected a paper size a4/a5/a3/letter/legal, a WxH pair, landscape/portrait, a margin like margin-20 or margin/20, or a block item like [BODY [...]])"
+                            ]
                         ]
                     ]
                 ]
@@ -563,7 +581,7 @@ parse-section: func [
         while [not tail? pos][
             d: pos/1
             case [
-                word? d [
+                any [word? d  path? d] [
                     return rejoin ["Bare word '" mold d "' between items; each item is written as a block, e.g. [BODY [...]]"]
                 ]
                 all [block? d not empty? d word? d/1 not find known-keywords to word! d/1][
