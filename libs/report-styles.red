@@ -29,7 +29,7 @@ report-styles: context [
     font-size:           12
     line-height-factor:  1.6
     ; spacing for lines whose largest size is above the base size (headings or
-    ; big -N sizes) — lower it if large fonts get too much leading
+    ; big /N sizes) — lower it if large fonts get too much leading
     line-height:         to integer! (font-size * line-height-factor)
     base-styles:         copy []   ; global base font styles (see make-font)
     row-padding:          4
@@ -40,7 +40,7 @@ report-styles: context [
     ;=== Unit helpers ===
 
     width-to-px: func [
-        "Normalize a width spec to page units (px). Bare number -> default-unit ('ch or 'px). #Npx / #Nch -> explicit units."
+        "Normalize a width spec to page units (px). Bare number -> default-unit ('ch or 'px). px/N / ch/N -> explicit units."
         spec [number! issue!] default-unit [word!]
         /local s u n
     ][
@@ -98,7 +98,7 @@ report-styles: context [
 
     make-font: func [
         {Set the report's global base font: familiar style words (b i u s m h1-h3,
-         link-N, colours) and a size in points. It applies to every value; per-line
+         link/N, colours) and a size in points. It applies to every value; per-line
          and per-value styles merge on top and !X drops a base style, so callers can
          still override it locally. One call configures the View and PDF renderers
          and the shared report-styles copy the parser reads, so calling it on either
@@ -269,7 +269,7 @@ report-styles: context [
     ]
 
     style-underline-type: func [
-        "Underline style: 'solid | 'dotted | 'none. An explicit u wins; otherwise link-N -> 'solid, hint-N -> 'dotted, unless !u."
+        "Underline style: 'solid | 'dotted | 'none. An explicit u wins; otherwise link/N -> 'solid, hint/N -> 'dotted, unless !u."
         styles [block!]
         /explicit
         /local ws
@@ -400,20 +400,23 @@ report-styles: context [
     ]
 
     ;--- Character-width model -------------------------------------------------
-    ; A bare integer or '#Nch' on a line segment means N *average characters* in
+    ; A bare integer or 'ch/N' on a line segment means N *average characters* in
     ; that segment's style/font: the average is measured over the alphabet below,
-    ; so it is a property of the style, not of the value's text. '#Npx' is literal.
+    ; so it is a property of the style, not of the value's text. 'px/N' is literal.
     alphabet: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
     style-width-px: func [
-        "Literal pixel width from an explicit #Npx tag in styles, or 0"
+        "Literal pixel width from a px/N style (or the legacy px/N tag), or 0"
         styles [block!]
-        /local s u
+        /local s u ss
     ][
         foreach s styles [
-            if issue? s [
-                u: copy/part skip tail (form s) -2 2
-                if u = "px" [return to integer! copy/part form s ((length? form s) - 2)]
+            case [
+                issue? s [
+                    u: copy/part skip tail (form s) -2 2
+                    if u = "px" [return to integer! copy/part form s ((length? form s) - 2)]
+                ]
+                all [word? s  ss: size-suffix s  ss/1 = 'px][return ss/2]
             ]
         ]
         0
@@ -429,10 +432,11 @@ report-styles: context [
     ]
 
     style-chars: func [
-        {Character count for a width box from a bare integer, #Nch, or the width part of a
-         float (w.d -> w); or 0. The fraction of a float stays the decimal count.}
+        {Character count for a width box from a bare integer, a ch/N style (or the legacy
+         ch/N tag), or the width part of a float (w.d -> w); or 0. The fraction of a
+         float stays the decimal count.}
         styles [block!]
-        /local s u f dpos n
+        /local s u f dpos n ss
     ][
         foreach s styles [
             case [
@@ -443,6 +447,7 @@ report-styles: context [
                     n: attempt [to integer! either dpos [copy/part f dpos][f]]
                     if all [n n > 0][return n]
                 ]
+                all [word? s  ss: size-suffix s  ss/1 = 'ch][return ss/2]
                 issue? s [
                     u: copy/part skip tail (form s) -2 2
                     if u = "ch" [return to integer! copy/part form s ((length? form s) - 2)]
@@ -494,7 +499,7 @@ report-styles: context [
     ]
 
     size-suffix: func [
-        "Split a sized style word like i-8 / m-10 into [base-word size]; none when there is no -N suffix."
+        "Split a sized style word like i/8 / m/10 into [base-word size]; none when there is no /N suffix."
         w [word!]
         /local f p n i
     ][
@@ -509,7 +514,7 @@ report-styles: context [
     ]
 
     family-of: func [
-        "Family of a style word: sans (ss), mono (m) or serif (s), each optionally -N sized; none if not a family word."
+        "Family of a style word: sans (ss), mono (m) or serif (s), each optionally /N sized; none if not a family word."
         w [word!]
         /local ss base
     ][
@@ -568,8 +573,8 @@ report-styles: context [
     ]
 
     style-size: func [
-        {Explicit size (from a -N suffix on a style word, e.g. i-8 / s-10 / ss-12)
-         for a style block, or none. link-N / hint-N ids are not sizes.}
+        {Explicit size (from a /N suffix on a style word, e.g. i/8 / s/10 / ss/12)
+         for a style block, or none. link/N / hint/N ids are not sizes.}
         styles [block!]
         /local ss
     ][
@@ -585,7 +590,7 @@ report-styles: context [
     ]
 
     font-size-for: func [
-        "Effective font size for a style block: explicit -N size, else the heading size, else the base size."
+        "Effective font size for a style block: explicit /N size, else the heading size, else the base size."
         styles [block!]
         /local sz
     ][
@@ -1166,7 +1171,7 @@ report-styles: context [
     ;=== Word wrap =============================================================
 
     style-box-width: func [
-        "Pixel width of a style block's width box (#Npx, #Nch, integer or float w.d), or 0 if none."
+        "Pixel width of a style block's width box (px/N, ch/N, integer or float w.d), or 0 if none."
         styles [block!]
         /local w n
     ][
@@ -1430,10 +1435,10 @@ report-styles: context [
 
     image-caption-info: func [
         {Parse an IMAGE caption line [value [styles]] with the CLI-style grammar:
-         optional width issue (#Npx/#Nch), optional leading 'shadow or 'border, optional
+         optional width issue (px/N/ch/N), optional leading 'shadow or 'border, optional
          inset (integer), optional first color = the shadow/border color (default silver when a
          box is present and no color follows), then the caption text styles (b i u m s h1-h3,
-         link-N/hint-N, !X) and the trailing 1-3 colors = the caption font/background/frame.
+         link/N/hint/N, !X) and the trailing 1-3 colors = the caption font/background/frame.
          Returns [caption color inset shadow? cap-styles link-id hint-id width]; 'color' is the
          box/base color for the shadow/border geometry, 'shadow?' true for a drop shadow.}
         line [block! none!]
@@ -1452,7 +1457,7 @@ report-styles: context [
             caption: pair/1
             styles: either all [(length? pair) >= 2 block? pair/2][pair/2][copy []]
             rest: copy []
-            ; optional width issue (#Npx/#Nch): pulled out of the styles, used for sizing
+            ; optional width issue (px/N/ch/N): pulled out of the styles, used for sizing
             foreach s styles [
                 either issue? s [
                     if none? width [width: s]
@@ -1510,7 +1515,7 @@ report-styles: context [
     ]
 
     image-width: func [
-        "Extract an optional image width issue (#Npx/#Nch) from an IMAGE style block, or none."
+        "Extract an optional image width issue (px/N/ch/N) from an IMAGE style block, or none."
         styles [block! none!]
         /local w s
     ][
@@ -1525,7 +1530,7 @@ report-styles: context [
 
     image-declared-width: func [
         {Declared width of an IMAGE line: the width argument if given (bare number = px,
-         or #Npx/#Nch), else a #Npx/#Nch at the start of the caption style block; none = intrinsic.}
+         or px/N/ch/N), else a px/N/ch/N at the start of the caption style block; none = intrinsic.}
         ia [block!] cap-info [block!]
     ][
         either ia/1 [ia/1][cap-info/8]

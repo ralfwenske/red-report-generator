@@ -21,8 +21,8 @@ report: [
         ["|" "left" [< 10] "|" "centre" [^ 10 s b] "|" "right" [> 10] "|"] 
         ["|" "left" [< 10] "|" "centre" [^ 10 s b] "|" 5467 [10] "|"] 
         []
-        ["|" "left" [< 10] "|" "centre" [^ #70px] "|" "right" [> 10] "|"] 
-        ["|" "left" [< 10] "|" "Centre" [^ #70px s b] "|" "right" [> 10] "|"] 
+        ["|" "left" [< 10] "|" "centre" [^ px/70] "|" "right" [> 10] "|"] 
+        ["|" "left" [< 10] "|" "Centre" [^ px/70 s b] "|" "right" [> 10] "|"] 
     ]]
 ]
 

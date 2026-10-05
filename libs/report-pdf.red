@@ -726,7 +726,7 @@ report-pdf: make report-styles [
         font-no: either any-style? [font-for-styles styles][regular-font]
         ut: style-underline-type/explicit styles
 
-        ; width box: #Npx is literal; a bare integer or #Nch means N average
+        ; width box: px/N is literal; a bare integer or ch/N means N average
         ; characters of this font (the alphabet average, not the value text)
         wpx: style-width-px styles
         if wpx = 0 [

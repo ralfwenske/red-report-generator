@@ -15,7 +15,7 @@ Red [
 ; box (2 or 3 args: p1 p2 [radius]), circle, ellipse, line, triangle, polygon.
 ; See the Advanced usage section of docs/report-syntax-spec.md.
 
-report: [ 800x900 margin-30
+report: [ 800x900 margin/30
     [HEADER [["026 - Inline draw" [h2]]]]
     [BODY [
         ["This paragraph is framed by the DRAW that follows it: prev-* is its box." [b]]

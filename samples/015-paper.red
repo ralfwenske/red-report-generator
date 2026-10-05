@@ -11,7 +11,7 @@ Red [
 ; is landscape A5 with a 20 pt margin, so it is wider than it is tall.
 
 report: [
-    landscape a5 margin-20
+    landscape a5 margin/20
     [HEADER [
         ["ACME Corp" [h1 red] "Quarterly Report" [h2]]
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]

@@ -163,7 +163,7 @@ This keeps samples honest and gives CI something to run. Run it with plain `red`
 ### 4.7 Line width model (carry over unchanged)
 
 On a line segment the value gets a **box**; the following segment starts at its right
-edge. The box comes from, in order: literal `#Npx`; else a bare integer or `#Nch` = `N`
+edge. The box comes from, in order: literal `px/N`; else a bare integer or `ch/N` = `N`
 average alphabet characters of the segment's style; else a float `w.d` on a number = `w`
 average characters with `d` decimals. A **numeric value with a box defaults to
 right-aligned** in it (so decimal points line up); strings and other values default left,
@@ -174,7 +174,7 @@ each renderer (`avg-char-width`). Note the implementation details that make it c
   (`format-number-value/nopad`);
 - table cells keep their own column-based formatting and must **not** receive a box, so
   floats are stripped from the cell's *text* styles before rendering;
-- `#Npx` and char/floats both align following segments; chars/floats are the memorable
+- `px/N` and char/floats both align following segments; chars/floats are the memorable
   choice when values share a style.
 
 Reference: `docs/report-syntax-spec.md` §5.3/§5.4.
@@ -187,13 +187,13 @@ Start with **01–03 only**; extend later by dropping files in.
 |---|---|---|
 | 01 | `01-hello.red` | `BODY` + one line — the minimum viable report |
 | 02 | `02-styles.red` | bold/italic/underline/mono, colours, alignment on one line |
-| 03 | `03-widths.red` | char widths vs `#Npx`; making a column of values line up |
+| 03 | `03-widths.red` | char widths vs `px/N`; making a column of values line up |
 | 04 | `04-sections.red` | `HEADER`/`BODY`/`FOOTER` + tokens `<page>`/`<pages>` |
 | 05 | `05-table.red` | `TABLE BOX ALT`, header row, page splitting |
 | 06 | `06-column.red` | `COLUMN` `auto` vs `ch`/`px`, rows from a variable |
-| 07 | `07-image.red` | caption, width in style, `shadow`/`border`, `link-N` |
+| 07 | `07-image.red` | caption, width in style, `shadow`/`border`, `link/N` |
 | 08 | `08-paper.red` | sizes, `landscape`, margins |
-| 09 | `09-links.red` | `link-N`/`hint-N` + `do-popup` callback |
+| 09 | `09-links.red` | `link/N`/`hint/N` + `do-popup` callback |
 | 10 | `10-your-data.red` | computed rows spliced in + `report-pdf/generate` |
 
 Sketch of the first three (content only, to be written during implementation):
@@ -203,8 +203,8 @@ Sketch of the first three (content only, to be written during implementation):
 - **02-styles** — one line showing each style and colour; a couple of lines to show
   alignment (`<` `>` `^`).
 - **03-widths** — the tutorial you just built: several lines whose first value uses a
-  char width (`20` / `#20ch`) so like‑styled following values line up, plus one line
-  using `#Npx` and a note that mixed styles need `#Npx`. Include a numeric value with a
+  char width (`20` / `ch/20`) so like‑styled following values line up, plus one line
+  using `px/N` and a note that mixed styles need `px/N`. Include a numeric value with a
   float style (e.g. `1234.5678 [i 15.2]`) to show the same box via the float's integer
   part, with the fraction as decimals and the number right‑aligned.
 
@@ -278,10 +278,10 @@ Sketch of the first three (content only, to be written during implementation):
   invalid. Samples therefore stay minimal — no per-file validation boilerplate —
   and the sampler distinguishes "invalid" from "opened and closed".
 - **IMAGE width** — the width belongs to the image, so it is the optional **first
-  argument** (`[IMAGE 120 %file …]`, bare number = px; `#Npx`/`#Nch` also accepted).
+  argument** (`[IMAGE 120 %file …]`, bare number = px; `px/N`/`ch/N` also accepted).
   The parser already validated this form, but both renderers were only reading a
-  `#Npx` from the caption style block, so the argument was silently ignored; the
-  renderers now honour the argument (caption `#Npx`/`#Nch` remains as a fallback).
+  `px/N` from the caption style block, so the argument was silently ignored; the
+  renderers now honour the argument (caption `px/N`/`ch/N` remains as a fallback).
   `libs/report-styles.red`, `libs/report-view.red` and `libs/report-pdf.red` changed
   for this.
 - **Global base font** — `make-font styles size` (e.g. `report-view/make-font [m] 8`)
@@ -338,7 +338,7 @@ Sketch of the first three (content only, to be written during implementation):
   is the value's own measured box — which is what removed the heading/cell overlap.
   `prev-line` carries the previous line across body calls and after the header, and
   is cleared on page breaks and after tables/images/columns.
-  Remaining: column auto-width and `#Nch` still use the conservative
+  Remaining: column auto-width and `ch/N` still use the conservative
   `font-size * 0.583` estimate (`report-view/col-char-width`,
   `report-styles/measure-column-pixels`) rather than the metrics function, so mono
   cells can differ from the drawn text width.
@@ -347,13 +347,13 @@ Sketch of the first three (content only, to be written during implementation):
   width and the remaining height) instead of the full content height, so it no
   longer forces a page break when text precedes it; put it first in the body for a
   full-page image. A declared width still starts a new page if needed.
-- **Image captions keep the normal text size** — `link-N`/`hint-N` ids were being
-  read as `word-N` size suffixes (`link-1` → size 1), shrinking captions (and any
+- **Image captions keep the normal text size** — `link/N`/`hint/N` ids were being
+  read as `word/N` size suffixes (`link/1` → size 1), shrinking captions (and any
   link/hint text) to ~1 pt. `style-size` now only accepts a known style word or
   family as the base, so ids are ignored; a caption can still set its own size with
-  any `-N` style word (e.g. `[s-8]`, `[m-10]`). The reserved caption height follows
+  any `/N` style word (e.g. `[s/8]`, `[m/10]`). The reserved caption height follows
   the caption's size. The same vocabulary is accepted in a `COLUMN`'s `image […]`
-  clause (and in the column args), so e.g. `image [shadow 3 silver s-8]` sizes
+  clause (and in the column args), so e.g. `image [shadow 3 silver s/8]` sizes
   every image caption in that column.
 - **Heading line height** — a line's vertical slot is now
   `max(line-height, largest heading size)` via `report-styles/line-advance`, used

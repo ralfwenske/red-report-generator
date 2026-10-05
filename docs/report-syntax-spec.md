@@ -37,9 +37,9 @@ The grammar below uses:
 - `( … )` — optional, or a Red parenthesized expression to be evaluated (see §11).
 - `x | y` — alternatives. `*` — zero or more. `+` — one or more.
 - Keywords are shown uppercase for readability; matching is **case-insensitive** (verified; see §11.3).
-- `word/value` — a path-qualified argument: `ss/10` ≡ `ss-10`, `margin/20` ≡ `margin-20`,
-  `left/25` ≡ `left-25`, `link/2` ≡ `link-2`. Both spellings are accepted; the path form
-  is canonical (a 2-component path is normalised to the dash word before parsing).
+- `word/value` — a qualified argument: `ss/10`, `margin/20`, `left/25`, `link/2`, `px/80`,
+  `ch/20`. This is the dialect spelling. (Legacy dash forms such as `ss-10`, `margin-20`
+  and the `#Npx`/`#Nch` width tags are still accepted, but are not documented/canonical.)
 
 ## 3. Document structure
 
@@ -52,7 +52,7 @@ page        := [ paper-clause? item … ]        ; paper clause, then items in a
 paper-clause := paper-size? orientation? margin? …
 paper-size   := a4 | letter | legal | a3 | a5 | <WxH pair>   ; default a4
 orientation  := landscape | portrait                          ; default portrait
-margin       := top-N | bottom-N | left-N | right-N | margin-N   ; N in points, default 50
+margin       := top/N | bottom/N | left/N | right/N | margin/N   ; N in points, default 50
 
 section-item := [HEADER [items]]            ; optional
               | [BODY   [items]]            ; required
@@ -65,15 +65,15 @@ item         := … | [DRAW H? [draw…]]         ; BODY-only foreground art (Ad
 - `BODY` is **required**; `HEADER` and `FOOTER` are optional and may appear in any order.
 - The paper clause sets the page's size, orientation and margins for **both** renderers
   (default a4 portrait, 50 pt margins). Directives may be combined in any order
-  (`[landscape a4 top-20 margin-15 …]`, `[600x800 portrait right-10 …]`); when repeated,
-  the last size and last orientation win. For margins, `margin-N` sets a uniform default
-  for all four sides and an individual `top-N`/`bottom-N`/`left-N`/`right-N` always overrides
-  it — in **any order** (`[margin-25 top-10 …]` and `[top-10 margin-25 …]` give the same result).
+  (`[landscape a4 top/20 margin/15 …]`, `[600x800 portrait right/10 …]`); when repeated,
+  the last size and last orientation win. For margins, `margin/N` sets a uniform default
+  for all four sides and an individual `top/N`/`bottom/N`/`left/N`/`right/N` always overrides
+  it — in **any order** (`[margin/25 top/10 …]` and `[top/10 margin/25 …]` give the same result).
   A **pair** (`600x800`) sets a custom
-  width×height in points; margins are in points too (`top-20`, `right-10`, `margin-25`
+  width×height in points; margins are in points too (`top/20`, `right/10`, `margin/25`
   sets all four). Unknown leading words are invalid (reported by `validate-report`).
   All four margins measure from the page edge to the **top of the first line** (header
-  if present, else the first body line), so the visual top gap equals `margin-N` just
+  if present, else the first body line), so the visual top gap equals `margin/N` just
   like the other sides.
 - Words between a section keyword and its items block are section *args*: parsed and
   stored (`pg/header/args` etc.) but **currently unused by either renderer** (§13).
@@ -219,22 +219,22 @@ line-item    := [ value style-block? value style-block? … ]
 `[COLUMN width? gap? [ rows]`  |  `[COLUMN width? gap? image [img-styles] [ rows]`
 
 - *width* — column width: a bare number (in `ch` units, see §7), an explicit unit
-  tag `#Npx` / `#Nch`, or `auto` to auto-measure the widest row. Omitted → `auto`.
+  tag `px/N` / `ch/N`, or `auto` to auto-measure the widest row. Omitted → `auto`.
   (Unlike `IMAGE`, whose bare width argument is px — §4.4.)
-- *gap* — space between columns: bare number in `ch`, or `#Npx`/`#Nch`; default `1ch`, minimum `1ch`.
+- *gap* — space between columns: bare number in `ch`, or `px/N`/`ch/N`; default `1ch`, minimum `1ch`.
   **`gap` cannot be set unless `width` is present** — the first arg is always the width.
   To set only the gap, give `auto` as the width: `[COLUMN auto 2 …]`.
 - *text (line) styles* — any additional args after `width`/`gap` apply to **line rows only**:
-  `m`, `s`, `b`, `i`, `u`, `h1`/`h2`/`h3`, `link-N`/`hint-N` (make every cell
+  `m`, `s`, `b`, `i`, `u`, `h1`/`h2`/`h3`, `link/N`/`hint/N` (make every cell
   interactive), color words (font colour for text), and negations (`!b` …). Useful to pin a font
   (e.g. `m`) so column widths are predictable. They never touch a contained `IMAGE`.
   Example: `[COLUMN auto 1 m rows]`.
 - *image clause* — the word `image` followed by one style block styles every contained `IMAGE`
   (and only images): `[COLUMN … image [img-styles] [rows]]`. The image style block uses the IMAGE
   grammar from §4.4, including caption text styles — so a **family and/or size** applies to all
-  the column's image captions, e.g. `image [shadow 3 silver s-8 link-1]`. It may carry a
-  **default image width** (`#Npx`/`#Nch`, e.g. `image [#80px shadow 3 silver]`). Generics and
-  the image clause may both be present (`[COLUMN b image [#80px shadow 3 silver] rows]`): text
+  the column's image captions, e.g. `image [shadow 3 silver s/8 link/1]`. It may carry a
+  **default image width** (`px/N`/`ch/N`, e.g. `image [px/80 shadow 3 silver]`). Generics and
+  the image clause may both be present (`[COLUMN b image [px/80 shadow 3 silver] rows]`): text
   rows get `b`, images the image styles.
   With **no** `image` clause a contained image falls back to its **own** caption style block.
 - Rows may be line items or image items. Line rows get the text styles; image rows are styled
@@ -252,13 +252,13 @@ line-item    := [ value style-block? value style-block? … ]
 
 - *file* — a `file!` or `string!` path.
 - *width* — optional first argument, **belonging to the image** (not the caption): a bare
-  number is pixels (see §7), or `#Npx` / `#Nch` for an explicit unit. When omitted the image
+  number is pixels (see §7), or `px/N` / `ch/N` for an explicit unit. When omitted the image
   is scaled to its **intrinsic proportions, contained to the space still free on the current
   page** (so it fits under preceding text instead of forcing a page break); put it first in
   the body for a full-page image. Inside a `COLUMN` a width-less image is contained to the
   column width (see §4.3).
-  For backward compatibility a `#Npx` / `#Nch` at the start of the caption style block is
-  also honoured as a fallback when no width argument is given.
+  For backward compatibility a width at the start of the caption style block (`px/N`/`ch/N`)
+  is also honoured as a fallback when no width argument is given.
 - The optional trailing block is the image's **caption line** — exactly one value + a style block.
 - *caption* — a `string!`, drawn **centered one line below** the image. When the caption line is
   omitted, the caption defaults to the **file's name without extension** (`Empress.jpg` → `Empress`);
@@ -270,17 +270,17 @@ line-item    := [ value style-block? value style-block? … ]
   3. optional **color** — the shadow/border colour (default `silver`); the **first** colour after
      `shadow`/`border` is consumed as the box colour;
   4. the remaining words are the caption's **text styles** (`b i u s`/`ss`/`m` `h1-h3`, any
-      `-N` size such as `s-8`/`m-10`, `link-N`, `hint-N`, `!X`) and the trailing 1–3
+      `/N` size such as `s/8`/`m/10`, `link/N`, `hint/N`, `!X`) and the trailing 1–3
       **colours** (font, background, frame) — as on a line. The caption keeps the normal
       text size unless its style block sets one.
-      `link-N`/`hint-N` make the **whole image area** an interactive hotspot (the caption is the
-      popup text, `N` the id); `link-N` implies a solid underline, `hint-N` a dotted one (View-only).
+      `link/N`/`hint/N` make the **whole image area** an interactive hotspot (the caption is the
+      popup text, `N` the id); `link/N` implies a solid underline, `hint/N` a dotted one (View-only).
 - Examples:
   - `[IMAGE %Empress.jpg]` — intrinsic width contained to the page; caption `Empress`.
-  - `[IMAGE 120 %Empress.jpg ["Empress" [shadow 3 red link-1]]]` — 120 px, red shadow, linked.
-  - `[IMAGE #120px %Empress.jpg ["Empress" [border 3 silver]]]` — explicit px unit, silver frame box.
+  - `[IMAGE 120 %Empress.jpg ["Empress" [shadow 3 red link/1]]]` — 120 px, red shadow, linked.
+  - `[IMAGE px/120 %Empress.jpg ["Empress" [border 3 silver]]]` — explicit px unit, silver frame box.
   - `[IMAGE %Empress.jpg ["Empress" [b red blue]]]` — intrinsic width, no box; bold caption, red on blue.
-  - `[COLUMN #120px #4ch image [shadow 3 silver] [ [IMAGE %a.jpg] [IMAGE %b.jpg [""]] ]]` — a column
+  - `[COLUMN px/120 ch/4 image [shadow 3 silver] [ [IMAGE %a.jpg] [IMAGE %b.jpg [""]] ]]` — a column
     of images, silver shadow, uniform row height; captions default to the file name, the second has none.
 - Height derives from the image's aspect ratio; the base extends the occupied height.
   Works in both renderers, including inside a `COLUMN`.
@@ -316,7 +316,7 @@ is what the demos use. Alignment words (`<` `>` `^`) are the exception — they 
 | `^` | center-align | line segments, table columns |
 
 The **default alignment is left**, with one exception: a **numeric value that carries a
-width box** (`w.d` float, integer `N`, `#Nch`, `#Npx`) defaults to **right**, so numbers
+width box** (`w.d` float, integer `N`, `ch/N`, `px/N`) defaults to **right**, so numbers
 and their decimal points line up. An explicit `<`/`^`/`>` always wins. (The original
 proposal suggested "center if no alignment given" — *not* adopted; `'^` was kept. See §13.)
 
@@ -327,12 +327,12 @@ proposal suggested "center if no alignment given" — *not* adopted; `'^` was ke
 | `b` | bold (implied by `h1`–`h3`) |
 | `i` | italic |
 | `u` | underline |
-| `!u` | negate underline — suppresses `u`, and the automatic underline implied by `link-N`/`hint-N` |
+| `!u` | negate underline — suppresses `u`, and the automatic underline implied by `link/N`/`hint/N` |
 | `s` | serif font (the default) |
 | `ss` | sans-serif font |
 | `m` | monospace font (widths are `length × cell advance`, independent of font ligatures, so the View and PDF agree) |
 | `h1` / `h2` / `h3` | heading levels, font sizes 24 / 18 / 14 pt |
-| `word-N` or `word/N` | any style word may carry a size suffix (points), e.g. `i-8`/`i/8` (italic 8), `m-10`/`m/10` (mono 10), `ss-12`/`ss/12` (sans 12), `h2-20`/`h2/20`; it sets that value's font size, or the whole line when used in the line's leading style block |
+| `word/N` | any style word may carry a size suffix (points), e.g. `i/8` (italic 8), `m/10` (mono 10), `ss/12` (sans 12), `h2/20`; it sets that value's font size, or the whole line when used in the line's leading style block |
 
 ### 5.3 Value formatting
 
@@ -343,8 +343,8 @@ proposal suggested "center if no alignment given" — *not* adopted; `'^` was ke
 | `10.3` (float) | number format: `3` decimals, and on a line segment the width `10` is a box of 10 average characters (see §5.4); a numeric value with a box defaults right-aligned |
 | `date` / `time` / `datetime` | format a `date!` value as date / time (`hh:mm`) / date+time. Use `(now) [date]` / `(now) [time]` / `(now) [datetime]` |
 | `N` (integer) | **per-value width** — a box of N average characters of the segment's style (see §5.4) |
-| `#Npx` | literal N-pixel per-value width (see §5.4) |
-| `#Nch` | N average characters of the segment's style, like the integer form (see §5.4) |
+| `px/N` | literal N-pixel per-value width (see §5.4) |
+| `ch/N` | N average characters of the segment's style, like the integer form (see §5.4) |
 | `blank` | in table cells: suppress `0` numeric values |
 
 Note on the float form: a negative width (e.g. `-10.3`) is parsed but has **no
@@ -356,8 +356,8 @@ use `'>` instead (§13).
 A width on a line segment defines a **box** for that value; the value is laid out in
 the box honouring its alignment, and the next segment starts at the box's right edge.
 
-- `#Npx` — a literal N-pixel box.
-- integer `N`, or `#Nch` — a box of `N` **average characters of the segment's
+- `px/N` — a literal N-pixel box.
+- integer `N`, or `ch/N` — a box of `N` **average characters of the segment's
   style/font**. The average is measured once over the alphabet `a`–`z` `A`–`Z` in
   the resolved style (font family, size, weight, italic), so it depends only on the
   style, **not** on the value's own text. Two segments sharing a style therefore get
@@ -373,14 +373,14 @@ overrides in every case.
 
 | Context | Width means |
 |---|---|
-| line segment (content/header/footer), integer `N` or `#Nch` | N average alphabet characters of the segment's style |
+| line segment (content/header/footer), integer `N` or `ch/N` | N average alphabet characters of the segment's style |
 | line segment, float `w.d` on a number | average-character box of size `w`, `d` decimals |
-| line segment, `#Npx` | N literal pixels |
+| line segment, `px/N` | N literal pixels |
 | table header row cell | column width in `ch` units |
 
 The integer-vs-column dual meaning is the largest source of confusion in the dialect
-and should be revisited (§14, R4). On a line, `#Npx` and the style-relative
-`N`/`#Nch` forms both align following segments; `N`/`#Nch` is the memorable choice
+and should be revisited (§14, R4). On a line, `px/N` and the style-relative
+`N`/`ch/N` forms both align following segments; `N`/`ch/N` is the memorable choice
 when the values share a style.
 
 ### 5.5 Colors
@@ -406,10 +406,10 @@ Their **relative order** defines the role (1st = font color, 2nd = background,
 
 | Style | Meaning |
 |---|---|
-| `link-N` | clickable hotspot; on click calls the popup handler with `'link N text` |
-| `hint-N` | hover hint; after the hint delay calls the handler with `'hint N text` |
+| `link/N` | clickable hotspot; on click calls the popup handler with `'link N text` |
+| `hint/N` | hover hint; after the hint delay calls the handler with `'hint N text` |
 
-A `link-N` style implies a **solid** underline, a `hint-N` style a **dotted** one,
+A `link/N` style implies a **solid** underline, a `hint/N` style a **dotted** one,
 automatically — unless `!u` is present (which suppresses the underline). An implicit
 auto-underline is also **not drawn when the run has an opaque background** (the
 background already marks the run, and with a 1 px row gap the underline would land in
@@ -470,12 +470,12 @@ the column spec win unless overridden by `<`/`>`/`^` in the cell.
 | bare number in a table header | column width in `ch` |
 | bare number in `COLUMN` width/gap | `ch` |
 | bare number in `IMAGE` width | `px` |
-| `#Npx` | `N` pixels |
-| `#Nch` | `N` × 0.583 × `font-size` pixels |
+| `px/N` | `N` pixels |
+| `ch/N` | `N` × 0.583 × `font-size` pixels |
 
 `1ch ≈ 0.583 × font-size` (a conservative estimate; default 12 pt ⇒ 7 px). Note the asymmetry: COLUMN uses
 `ch` by default, IMAGE uses `px` (§14, R10). On a **line segment** a bare integer or
-`#Nch` is not this constant — it means N average alphabet characters of the
+`ch/N` is not this constant — it means N average alphabet characters of the
 segment's style (§5.4).
 
 ## 8. Column layout algorithm
@@ -581,8 +581,8 @@ first. Checks include:
 - a missing `BODY` (`BODY section is missing; a report needs a [BODY [...]] item`);
 - unknown style words/lit-words in a style block — decorations/families/headings
   (`b i u s m h1-h3`), formats (`money s1000 date time datetime blank`), alignment
-  (`< > ^`), `shadow`/`border`, `link-N`/`hint-N`, `!X` negations, widths
-  (integers/floats, `#Npx`/`#Nch`) and colour words/tuples are allowed; anything
+  (`< > ^`), `shadow`/`border`, `link/N`/`hint/N`, `!X` negations, widths
+  (integers/floats, `px/N`/`ch/N`) and colour words/tuples are allowed; anything
   else (`nosuchstyle`, `ok?`) is an error. Unknown negations (`!wibble`) are also
   caught, even though `merge-styles` would otherwise drop them;
 - malformed `IMAGE`/`COLUMN`/`TABLE`, bad width tags, non-block table rows, sections
@@ -618,7 +618,7 @@ used by `validate-report` (arguments and section child keywords) and by
 because `parse-section` still emits the same objects.
 
 Args are matched against their kind: styles include the family/size/decoration/
-format vocabulary and colours; widths are numbers, `#Npx`/`#Nch`, or `auto` (COLUMN);
+format vocabulary and colours; widths are numbers, `px/N`/`ch/N`, or `auto` (COLUMN);
 `file` is a file/string path (IMAGE); modifiers are `BOX`/`ALT` (TABLE); integers are
 the optional DRAW/FRAME/DRAW-BG/PAGEBREAK numbers. Anything else is reported, e.g.
 `unexpected argument 7 for TABLE` or `unknown style word 'nope'`.
@@ -643,7 +643,7 @@ report-pdf/make-font/line styles size factor
 ```
 
 `make-font` sets the report's **global base font**: familiar style words
-(`b i u s m h1-h3`, `link-N`, colours — see §5.2) plus a size in points, e.g.
+(`b i u s m h1-h3`, `link/N`, colours — see §5.2) plus a size in points, e.g.
 `report-view/make-font [m] 8`. It applies to every value; per-line and per-value
 styles merge on top, and `!X` drops a base style, so any value can still override
 it locally (`[!m ss]` = sans where the base is mono). Headings scale with the base
@@ -655,7 +655,7 @@ largest such `height` among its values. Consecutive baselines are placed so the 
 boxes touch, separated by `line-gap-px` (default 1): the baseline distance from one
 line to the next is `descent(prev) + line-gap-px + ascent(next)`. The same metrics
 size each value's background/frame box, so boxes hug the text and cannot overlap the
-line above, and `h1`/`s-24`/plain text all lead correctly wherever they are used; a
+line above, and `h1`/`s/24`/plain text all lead correctly wherever they are used; a
 wrapped string's visual lines each take part in the same rule. The only exception:
 there is no gap before the first line of a page/block (nothing above it). Tune the
 gap with `report-styles/line-gap-px`.
@@ -710,9 +710,9 @@ material ways. Each item is marked **adopted**, **rejected**, or **replaced**.
 | D5 | `separator` formatting style | Implemented as `'s1000` | **Replaced** — different name, same intent |
 | D6 | `sans-serif`, `monospace` words | Short forms `'s`, `'m` | **Replaced** |
 | D7 | `[IMAGE width %file]` | As proposed, plus `#px`/`#ch` unit tags, aspect-ratio scaling, page-height cap, columns support | **Adopted (extended)** |
-| D8 | `[COLUMN (width) (gap) [items]]` | As proposed, plus `'auto` width, `ch` default units, gap default/min `1ch`, balanced height-aware layout, images inside, and column style args (`m s b u i h1-h3`, colors, `shadow`, `link-N`) inherited by every cell/contained IMAGE | **Adopted (extended)** |
+| D8 | `[COLUMN (width) (gap) [items]]` | As proposed, plus `'auto` width, `ch` default units, gap default/min `1ch`, balanced height-aware layout, images inside, and column style args (`m s b u i h1-h3`, colors, `shadow`, `link/N`) inherited by every cell/contained IMAGE | **Adopted (extended)** |
 | D9 | Header/footer lines use only the first three values | Positional layout L/C/R for segments 1–3, extra segments left | **Adopted (refined)** |
-| D10 | (not in proposal) | `link-N`/`hint-N` interactive styles; `'date`/`'time`/`'datetime`; `h3`; `'blank` zero suppression; table-internal `PAGEBREAK` with header repeat; `validate-report`; paren safety net | **Added** — the proposal was incomplete on interactivity, formats, and table behavior |
+| D10 | (not in proposal) | `link/N`/`hint/N` interactive styles; `'date`/`'time`/`'datetime`; `h3`; `'blank` zero suppression; table-internal `PAGEBREAK` with header repeat; `validate-report`; paren safety net | **Added** — the proposal was incomplete on interactivity, formats, and table behavior |
 
 Conclusion: the proposal's **item grammar is sound and was adopted**, but its
 section syntax, alignment rules, and style naming were revised during
@@ -722,7 +722,7 @@ units, validation) were never in the draft.
 ## 14. Known limitations (as of v2)
 
 1. **No text wrapping** — long segments overflow the page width.
-2. **PDF drops interactivity** — `link-N`/`hint-N` hotspots are View-only.
+2. **PDF drops interactivity** — `link/N`/`hint/N` hotspots are View-only.
 3. **Token handling** — `<page>`/`<pages>` are replaced by **both** renderers in header,
    content and footer (the old parity gap is closed); `<now>` uses `format-pair-value` (View+PDF).
 4. **No nesting** — columns inside columns, tables inside columns, or multi-line cells
@@ -949,7 +949,7 @@ parser knows about draw items, so it composes the report while leaving the ops b
 alone — you just write the report literally:
 
 ```red
-report: [ margin-20
+report: [ margin/20
     [DRAW-BG 3 [ pen off  fill-pen yellow  box 0x0 (as-pair page-width 56) ]]
     [HEADER [["Title" [h2] (now/date)]]]          ; (now/date) composed here
     [BODY   [["intro" [m]] [DRAW 30 [ box (as-pair x y) (as-pair x + 120 y + 24) ]] ["outro" [m]]]]
@@ -965,7 +965,7 @@ name; `compose/deep` never evaluates a word, and the parser resolves it:
 
 ```red
 bg: [ pen off  fill-pen yellow  box 0x0 (as-pair page-width 56) ]
-report: [ margin-20  [DRAW-BG 3 bg]  [BODY [["…"]]] ]
+report: [ margin/20  [DRAW-BG 3 bg]  [BODY [["…"]]] ]
 ```
 
 The same holds for `[DRAW H ops]`. Geometry stays in one place (the renderer) — nothing

@@ -258,9 +258,10 @@ parse-section: func [
     ]
 
     norm-arg: func [
-        {Normalise a qualified argument: a 2-component path base/value becomes the
-         equivalent dash word (ss/10 -> ss-10, margin/20 -> margin-20, link/2 -> link-2);
-         any other value is returned unchanged.}
+        {Normalise a qualified argument: a 2-component path base/value is turned into
+         the equivalent dash word for the internal vocabulary (ss/10 -> ss-10,
+         margin/20 -> margin-20, px/80 -> px-80, link/2 -> link-2); any other value is
+         returned unchanged. The dash spelling is a legacy alias accepted directly.}
         v [any-type!]
         /local p a b
     ][
@@ -431,14 +432,14 @@ parse-section: func [
 
     style-atom-ok?: func [
         {Is a single style atom allowed? Family words (s/m/ss), any style word with
-         an optional -N size suffix (e.g. i-8, m-10, ss-12), format/alignment words,
-         link-N/hint-N, widths and colours are allowed.}
+         an optional /N size suffix (e.g. i/8, m/10, ss/12), format/alignment words,
+         link/N/hint/N, widths and colours are allowed.}
         s [any-type!]
         /local ss
     ][
         case [
             tuple? s [true]
-            issue? s [true]          ; #Npx / #Nch
+            issue? s [true]          ; px/N / ch/N
             number? s [true]         ; integer width or float number-format
             word? s [
                 any [
@@ -449,6 +450,7 @@ parse-section: func [
                         any [
                             find report-styles/style-words ss/1
                             not none? report-styles/family-of ss/1
+                            find [px ch] ss/1
                         ]
                     ]
                     all [(length? form s) >= 6 (copy/part form s 5) = "link-"]
@@ -473,7 +475,7 @@ parse-section: func [
 
     style-hint: func [
         {Suggestion for a mistyped style word: family/style word + digits without the
-         hyphen, e.g. s16 -> 's-16'. Returns " (did you mean 's-16'?)" or "".}
+         separator, e.g. s16 -> 's/16'. Returns " (did you mean 's/16'?)" or "".}
         s [any-type!]
         /local f i prefix num pw c ok
     ][
@@ -490,7 +492,7 @@ parse-section: func [
         pw: attempt [to word! prefix]
         unless pw [return ""]
         unless any [find report-styles/style-words pw  not none? report-styles/family-of pw][return ""]
-        rejoin [" (did you mean '" prefix "-" num "'?)"]
+        rejoin [" (did you mean '" prefix "/" num "'?)"]
     ]
 
     check-line-styles: func [
@@ -539,6 +541,19 @@ parse-section: func [
         pagebreak [[integer]            []]
     ]
 
+    width-atom?: func [
+        "Width argument: a number, px/N or ch/N style, legacy px/N/ch/N, or 'auto"
+        a [any-type!]
+        /local ss
+    ][
+        case [
+            any [number? a issue? a][true]
+            all [word? a  ss: report-styles/size-suffix a  find [px ch] ss/1][true]
+            all [word? a  a = 'auto][true]
+            true [false]
+        ]
+    ]
+
     arg-kind: func [
         "Kind of one argument for a keyword: style|width|file|modifier|integer|none"
         kw [word!] a [any-type!]
@@ -550,14 +565,13 @@ parse-section: func [
             kw = 'image [
                 case [
                     any [file? a string? a] ['file]
-                    any [number? a issue? a] ['width]
+                    all [width-atom? a  a <> 'auto]['width]
                     true [none]
                 ]
             ]
             kw = 'column [
                 case [
-                    any [number? a issue? a] ['width]
-                    all [word? a a = 'auto]['width]
+                    width-atom? a ['width]
                     style-word-ok? a ['style]
                     true [none]
                 ]
@@ -819,7 +833,7 @@ parse-section: func [
                             if ln/img [
                                 foreach st ln/img [
                                     unless style-word-ok? st [
-                                        return rejoin [sec-name " line " i ": COLUMN image style must be shadow/border, an inset number, a width, a color, or a caption style (s/ss/m, b i u, h1-h3, -N sizes, link-N), got " mold st]
+                                        return rejoin [sec-name " line " i ": COLUMN image style must be shadow/border, an inset number, a width, a color, or a caption style (s/ss/m, b i u, h1-h3, word/N sizes, link/N), got " mold st]
                                     ]
                                 ]
                             ]

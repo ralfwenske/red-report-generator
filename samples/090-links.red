@@ -21,9 +21,9 @@ do-popup: func [type [word!] id [word! number!] txt [string!] /local body page][
         ["This popup is itself a report, shown with show-popup."]
         []
         ["In the report dialect you simply insert 'link-N' in a style block"]
-        [{   ["Click " "this link" [link-1] " for a popup."]}  [i]]
+        [{   ["Click " "this link" [link/1] " for a popup."]}  [i]]
         ["or"]
-        [{   ["Hover " "this hint" [hint-2] " for a popup."]}  [i]]
+        [{   ["Hover " "this hint" [hint/2] " for a popup."]}  [i]]
     ]]]
     show-popup rejoin [form type " " form id] page 460x160
 ]
@@ -31,9 +31,9 @@ do-popup: func [type [word!] id [word! number!] txt [string!] /local body page][
 report: [
     [BODY [
         ["Links and hints" [h2]]
-        ["Click " "this link" [link-1] " for a popup."]
-        ["Hover " "this hint" [hint-2] " for a moment."]
-        ["A link can carry any id: " "another" [link-42 blue] "."]
+        ["Click " "this link" [link/1] " for a popup."]
+        ["Hover " "this hint" [hint/2] " for a moment."]
+        ["A link can carry any id: " "another" [link/42 blue] "."]
     ]]
 ]
 

@@ -14,7 +14,7 @@ Red [
 ; file: %../assets/<name>.jpg.
 ;
 ; In the thumbnails COLUMN below, the width lives once in the COLUMN argument
-; (bare number = ch, so #60px keeps pixels); with no width in the image clause
+; (bare number = ch, so px/60 keeps pixels); with no width in the image clause
 ; the contained images take the column width.
 
 if exists? %samples/ [      ;make sure we are in the script directory
@@ -26,15 +26,15 @@ report: [
         [IMAGE %../assets/Empress.jpg]
 
         ["Width as the first argument (bare number = px):" [h3]]
-        [IMAGE 120 %../assets/Empress.jpg ["Empress" [shadow 3 silver link-1]]]
-        [IMAGE 200 %../assets/Emperor.jpg ["Emperor" [border gold link-2]]]
+        [IMAGE 120 %../assets/Empress.jpg ["Empress" [shadow 3 silver link/1]]]
+        [IMAGE 200 %../assets/Emperor.jpg ["Emperor" [border gold link/2]]]
 
         ["No caption, just a frame:" [h3]]
         ["(automatic pagebreak as it is too tall for the page)" [h3]]
         [IMAGE 120 %../assets/Magician.jpg ["" [border 2 silver]]]
 
         ["Thumbnails (the COLUMN width also sizes the images):" [h3]]
-        [COLUMN #60px #10px image [shadow 5 silver link-1 s-8][
+        [COLUMN px/60 px/10 image [shadow 5 silver link/1 s/8][
             [IMAGE %../assets/Empress.jpg]
             [IMAGE %../assets/Chariot.jpg]
             [IMAGE %../assets/Emperor.jpg]

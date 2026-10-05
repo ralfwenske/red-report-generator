@@ -23,11 +23,11 @@ report: compose/deep [
         ["fixed 12ch, gap 2" [h3]]
         [COLUMN 12 2 (items)]
 
-        ["fixed #27px, gap #2px" [h3]]
-        [COLUMN #27px #2px (items)]
+        ["fixed px/27, gap px/2" [h3]]
+        [COLUMN px/27 px/2 (items)]
 
-        ["fixed #90px" [h3]]
-        [COLUMN #90px (items)]
+        ["fixed px/90" [h3]]
+        [COLUMN px/90 (items)]
     ]]
 ]
 

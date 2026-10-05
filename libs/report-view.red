@@ -613,7 +613,7 @@ report-view: make report-styles [
             true       [bbot: -1]              ; serif: 1px gap above the next row
         ]
 
-        ; width box: #Npx is literal; a bare integer or #Nch means N average
+        ; width box: px/N is literal; a bare integer or ch/N means N average
         ; characters of this style/font (the alphabet average, not the value text)
         wpx: style-width-px styles
         if wpx = 0 [
@@ -1231,8 +1231,8 @@ report-view: make report-styles [
         col-img-w: report-styles/image-width col-img-styles
 
         ; args: [width] [gap] then optional column styles (m s b u i h1 h2 h3 ...)
-        ; width: bare number = ch units, #Npx / #Nch explicit, 'auto = auto-measure
-        ; gap:   bare number = ch units, #Npx / #Nch explicit, default 1ch
+        ; width: bare number = ch units, px/N / ch/N explicit, 'auto = auto-measure
+        ; gap:   bare number = ch units, px/N / ch/N explicit, default 1ch
         col-styles: copy []
         width-spec: 'auto
         gap-spec: none

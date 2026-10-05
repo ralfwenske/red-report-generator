@@ -11,7 +11,7 @@ Red [
 ; the measured content box (both in page/draw space, top-down). Rendered as native
 ; vector by both the View and the PDF.
 
-report: [ 800x900 margin-30
+report: [ 800x900 margin/30
     [HEADER [["027 - Frame" [h2]]]]
     [BODY [
         ["A FRAME wraps the lines below and measures them before drawing its backdrop." [m]]
