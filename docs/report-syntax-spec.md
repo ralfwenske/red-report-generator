@@ -590,6 +590,39 @@ first. Checks include:
 
 The demo reports all pass validation (verified).
 
+### 11.5 Item argument schema
+
+Every keyword item is described once, declaratively, in `report-parser`'s
+`item-schema`:
+
+```red
+; keyword -> [arg-kinds  child-keywords]
+header    [[style]              [table image column pagebreak]]
+footer    [[style]              [table image column pagebreak]]
+body      [[style]              [table image column pagebreak draw frame]]
+table     [[modifier style]     []]
+column    [[width width style]  [image pagebreak]]
+image     [[width file]         []]
+draw      [[integer]            []]
+draw-bg   [[integer]            []]
+frame     [[integer]            []]
+pagebreak [[integer]            []]
+```
+
+`collect-args` classifies a keyword's arguments into typed buckets (`styles`,
+`widths`, `files`, `modifiers`, `integers`) via `arg-kind`; same-kind atoms keep
+their occurrence order (so `COLUMN (width gap)` and `IMAGE (width file)` are
+positional), while atoms of different kinds may appear in any order. The schema is
+used by `validate-report` (arguments and section child keywords) and by
+`parse-section` to derive each item's threaded styles; the renderers are unaffected
+because `parse-section` still emits the same objects.
+
+Args are matched against their kind: styles include the family/size/decoration/
+format vocabulary and colours; widths are numbers, `#Npx`/`#Nch`, or `auto` (COLUMN);
+`file` is a file/string path (IMAGE); modifiers are `BOX`/`ALT` (TABLE); integers are
+the optional DRAW/FRAME/DRAW-BG/PAGEBREAK numbers. Anything else is reported, e.g.
+`unexpected argument 7 for TABLE` or `unknown style word 'nope'`.
+
 ## 12. Application interface
 
 ```red

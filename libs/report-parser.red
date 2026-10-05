@@ -68,7 +68,7 @@ parse-section: func [
      Uniform item grammar: [known-word args... [items]?]  |  [value [styles]? ...]}
     blk [block!]
     /base bs [block!]
-    /local result pos val kw-type kw-args body inner cbs ta a col-img frm-ops leftover
+    /local result pos val kw-type kw-args body inner cbs ta a col-img frm-ops leftover attrs
 ][
     result: copy []
     pos: blk
@@ -197,20 +197,10 @@ parse-section: func [
                 inner: next inner
             ]
             ; content base = inherited base merged with this item's style args;
-            ; sections and TABLE thread their style args to their content
-            cbs: bs
-            switch kw-type [
-                header [cbs: report-styles/merge-styles bs kw-args]
-                body   [cbs: report-styles/merge-styles bs kw-args]
-                footer [cbs: report-styles/merge-styles bs kw-args]
-                table  [
-                    ta: copy []
-                    foreach a kw-args [
-                        unless find ["BOX" "ALT"] uppercase copy form a [append ta a]
-                    ]
-                    cbs: report-styles/merge-styles bs ta
-                ]
-            ]
+            ; sections and TABLE thread their style args to their content. The
+            ; schema's `styles` bucket is the args minus modifiers (TABLE BOX/ALT).
+            attrs: collect-args kw-type kw-args
+            cbs: report-styles/merge-styles bs attrs/styles
             ; optional items block (a paren yields items when it evaluates to a block)
             case [
                 all [not tail? inner paren? inner/1][
@@ -526,6 +516,130 @@ parse-section: func [
         none
     ]
 
+    ;=== Item argument schema ==================================================
+    ; One declarative table per keyword: the kinds of argument it accepts
+    ; (order-significant for same-kind atoms — e.g. COLUMN (width gap)) and the
+    ; item heads its trailing block may contain. `validate-report` uses it, and
+    ; the parser uses `collect-args` to derive each item's styles. The renderers
+    ; keep consuming the object structure `parse-section` builds.
+
+    ; keyword → [arg-kinds  child-keywords]. Arg kinds are documentation here;
+    ; `arg-kind`/`collect-args` implement the per-keyword rules. Child keywords
+    ; are enforced for section items.
+    item-schema: [
+        header    [[style]              [table image column pagebreak]]
+        footer    [[style]              [table image column pagebreak]]
+        body      [[style]              [table image column pagebreak draw frame]]
+        table     [[modifier style]     []]
+        column    [[width width style]  [image pagebreak]]
+        image     [[width file]         []]
+        draw      [[integer]            []]
+        draw-bg   [[integer]            []]
+        frame     [[integer]            []]
+        pagebreak [[integer]            []]
+    ]
+
+    arg-kind: func [
+        "Kind of one argument for a keyword: style|width|file|modifier|integer|none"
+        kw [word!] a [any-type!]
+    ][
+        case [
+            find [draw draw-bg frame pagebreak] kw [
+                either integer? a ['integer][none]
+            ]
+            kw = 'image [
+                case [
+                    any [file? a string? a] ['file]
+                    any [number? a issue? a] ['width]
+                    true [none]
+                ]
+            ]
+            kw = 'column [
+                case [
+                    any [number? a issue? a] ['width]
+                    all [word? a a = 'auto]['width]
+                    style-word-ok? a ['style]
+                    true [none]
+                ]
+            ]
+            kw = 'table [
+                case [
+                    all [word? a not none? find [box alt] to word! a]['modifier]
+                    style-word-ok? a ['style]
+                    true [none]
+                ]
+            ]
+            true [
+                either style-word-ok? a ['style][none]
+            ]
+        ]
+    ]
+
+    collect-args: func [
+        {Classify a keyword's arguments into typed buckets; `problem` is a message or none.}
+        kw [word!] args [block!]
+        /local st a k
+    ][
+        st: make object! [
+            keyword: kw
+            styles: copy []  widths: copy []  files: copy []
+            modifiers: copy []  integers: copy []  problem: none
+        ]
+        foreach a args [
+            k: arg-kind kw a
+            case [
+                k = 'style    [append st/styles a]
+                k = 'width    [append st/widths a]
+                k = 'file     [append st/files a]
+                k = 'modifier [append st/modifiers a]
+                k = 'integer  [append st/integers a]
+                true [
+                    st/problem: either find [header footer body] kw [
+                        rejoin ["unknown style word '" mold a "'" style-hint a]
+                    ][
+                        rejoin ["unexpected argument " mold a " for " uppercase form kw]
+                    ]
+                    return st
+                ]
+            ]
+        ]
+        case [
+            kw = 'column [
+                if (length? st/widths) > 2 [
+                    st/problem: rejoin ["COLUMN takes at most (width gap), got " mold st/widths]
+                ]
+            ]
+            kw = 'image [
+                if (length? st/widths) > 1 [
+                    st/problem: rejoin ["IMAGE takes at most one width, got " mold st/widths]
+                ]
+                if (length? st/files) <> 1 [
+                    st/problem: rejoin ["IMAGE needs a file, e.g. [IMAGE %file.jpg] or [IMAGE 60 %file.jpg]"]
+                ]
+            ]
+            kw = 'table [
+                if (length? st/modifiers) > 2 [
+                    st/problem: rejoin ["TABLE takes at most BOX ALT, got " mold st/modifiers]
+                ]
+            ]
+            find [draw draw-bg frame pagebreak] kw [
+                if (length? st/integers) > 1 [
+                    st/problem: rejoin [uppercase form kw " takes at most one integer, got " mold st/integers]
+                ]
+            ]
+        ]
+        st
+    ]
+
+    schema-args-problem: func [
+        "Validate a keyword's arguments against its schema; a message or none"
+        kw [word!] args [block!]
+        /local st
+    ][
+        st: collect-args kw args
+        st/problem
+    ]
+
     bad-negation: func [
         {First !X anywhere in the page whose X is not a known style word, or none.
          Needed because merge-styles consumes !X before the merged-style check sees it.}
@@ -598,7 +712,7 @@ parse-section: func [
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a bg parsed w
+        /local err pg msg ln i row a bg parsed w sch2
     ][
         ;--- Cheap structural pre-check (catches unknown keywords/directives) ---
         msg: page-problem page
@@ -635,16 +749,16 @@ parse-section: func [
         bg: pg/draw-bg
         unless all [object? bg block? bg/lines][return "DRAW-BG: malformed"]
         if not empty? bg/lines [
-            if (length? bg/args) > 1 [return "DRAW-BG takes at most one density number"]
-            if all [not empty? bg/args not integer? bg/args/1][return "DRAW-BG density must be an integer"]
+            msg: schema-args-problem 'draw-bg bg/args
+            if msg [return rejoin ["DRAW-BG: " msg]]
             if all [not empty? bg/args bg/args/1 < 1][return "DRAW-BG density must be 1 or more"]
         ]
 
         ;--- Structural checks per section ---
-        foreach [sec-name sec] reduce [
-            "HEADER" pg/header
-            "BODY" pg/content
-            "FOOTER" pg/footer
+        foreach [sec-name sec sec-kw] reduce [
+            "HEADER" pg/header  'header
+            "BODY"   pg/content 'body
+            "FOOTER" pg/footer  'footer
         ][
             unless all [object? sec block? sec/lines][
                 return rejoin [sec-name ": section missing or malformed"]
@@ -653,11 +767,8 @@ parse-section: func [
             if all [w  not empty? get w][
                 return rejoin [sec-name ": unexpected content after its items block — did you forget a ']' before the next section? (got " mold first get w ")"]
             ]
-            foreach a sec/args [
-                unless style-word-ok? a [
-                    return rejoin [sec-name " args: unknown style word '" mold a "'" style-hint a]
-                ]
-            ]
+            msg: schema-args-problem sec-kw sec/args
+            if msg [return rejoin [sec-name ": " msg]]
             i: 0
             foreach ln sec/lines [
                 i: i + 1
@@ -672,30 +783,18 @@ parse-section: func [
                 either find [header body footer] ln/type [
                         return rejoin [sec-name " line " i ": '" ln/type "' is a section keyword; sections are only allowed at the top level"]
                     ][
-                        unless find [table image column pagebreak draw frame] ln/type [
+                        unless select item-schema ln/type [
                             return rejoin [sec-name " line " i ": unknown keyword '" ln/type]
+                        ]
+                        sch2: select item-schema sec-kw
+                        unless find sch2/2 ln/type [
+                            return rejoin [sec-name " line " i ": " uppercase form ln/type " is not allowed inside " sec-name]
                         ]
                     ]
                     switch ln/type [
                         image [
-                            if (length? ln/args) < 1 [
-                                return rejoin [sec-name " line " i ": IMAGE needs a file, e.g. [IMAGE %file.jpg] or [IMAGE 60 %file.jpg]"]
-                            ]
-                            either (length? ln/args) >= 2 [
-                                unless any [number? ln/args/1 issue? ln/args/1] [
-                                    return rejoin [sec-name " line " i ": IMAGE width must be a number or #px/#ch tag, got " mold ln/args/1]
-                                ]
-                                unless any [file? ln/args/2 string? ln/args/2] [
-                                    return rejoin [sec-name " line " i ": IMAGE file must be a file path, got " mold ln/args/2]
-                                ]
-                            ][
-                                unless any [file? ln/args/1 string? ln/args/1] [
-                                    return rejoin [sec-name " line " i ": IMAGE needs a file path, got " mold ln/args/1]
-                                ]
-                            ]
-                            if (length? ln/args) > 2 [
-                                return rejoin [sec-name " line " i ": IMAGE takes at most (width file); put caption and its styles in a nested block, e.g. [IMAGE 60 %f [Caption [shadow 3 silver]]]"]
-                            ]
+                            msg: schema-args-problem 'image ln/args
+                            if msg [return rejoin [sec-name " line " i ": " msg]]
                             if (length? ln/lines) > 1 [
                                 return rejoin [sec-name " line " i ": IMAGE takes at most one caption line"]
                             ]
@@ -715,19 +814,8 @@ parse-section: func [
                             if empty? ln/lines [
                                 return rejoin [sec-name " line " i ": COLUMN has no data block"]
                             ]
-                            wg: 0
-                            foreach a ln/args [
-                                either any [number? a issue? a a = 'auto][
-                                    wg: wg + 1
-                                    if wg > 2 [
-                                        return rejoin [sec-name " line " i ": COLUMN takes at most (width gap), got " mold ln/args]
-                                    ]
-                                ][
-                                    unless style-word-ok? a [
-                                        return rejoin [sec-name " line " i ": COLUMN arg must be a number, #px/#ch tag, 'auto or a style word (s/ss/m, b u i, h1-h3, -N sizes, link-N), got " mold a]
-                                    ]
-                                ]
-                            ]
+                            msg: schema-args-problem 'column ln/args
+                            if msg [return rejoin [sec-name " line " i ": " msg]]
                             if ln/img [
                                 foreach st ln/img [
                                     unless style-word-ok? st [
@@ -758,6 +846,8 @@ parse-section: func [
                             if empty? ln/lines [
                                 return rejoin [sec-name " line " i ": TABLE has no data block"]
                             ]
+                            msg: schema-args-problem 'table ln/args
+                            if msg [return rejoin [sec-name " line " i ": " msg]]
                             row: 0
                             foreach r ln/lines [
                                 row: row + 1
@@ -770,17 +860,16 @@ parse-section: func [
                                 ]
                             ]
                         ]
-                        pagebreak [true] ; any args acceptable
+                        pagebreak [
+                            msg: schema-args-problem 'pagebreak ln/args
+                            if msg [return rejoin [sec-name " line " i ": " msg]]
+                        ]
                         draw [
                             unless sec-name = "BODY" [
                                 return rejoin [sec-name " line " i ": DRAW is only supported inside BODY"]
                             ]
-                            if (length? ln/args) > 1 [
-                                return rejoin [sec-name " line " i ": DRAW takes at most one height (integer), got " mold ln/args]
-                            ]
-                            if all [not empty? ln/args not integer? ln/args/1] [
-                                return rejoin [sec-name " line " i ": DRAW height must be an integer, got " mold ln/args/1]
-                            ]
+                            msg: schema-args-problem 'draw ln/args
+                            if msg [return rejoin [sec-name " line " i ": " msg]]
                             if all [not empty? ln/args ln/args/1 < 0] [
                                 return rejoin [sec-name " line " i ": DRAW height must be 0 or more"]
                             ]
@@ -810,12 +899,8 @@ parse-section: func [
                             unless sec-name = "BODY" [
                                 return rejoin [sec-name " line " i ": FRAME is only supported inside BODY"]
                             ]
-                            if (length? ln/args) > 1 [
-                                return rejoin [sec-name " line " i ": FRAME takes at most one padding (integer), got " mold ln/args]
-                            ]
-                            if all [not empty? ln/args not integer? ln/args/1] [
-                                return rejoin [sec-name " line " i ": FRAME padding must be an integer, got " mold ln/args/1]
-                            ]
+                            msg: schema-args-problem 'frame ln/args
+                            if msg [return rejoin [sec-name " line " i ": " msg]]
                             if all [not empty? ln/args ln/args/1 < 0] [
                                 return rejoin [sec-name " line " i ": FRAME padding must be 0 or more"]
                             ]
