@@ -370,21 +370,6 @@ report-pdf: make report-styles [
         ]
     ]
 
-    font-ascent-for: func [
-        {Base-14 glyph ascender as a fraction of the glyph-scaled size: the distance
-         from the line-box top to the baseline, used to place text like the View
-         (which draws from the line-box top rather than from a baseline).}
-        styles [block!]
-        /local fam
-    ][
-        fam: style-family styles
-        case [
-            fam = 'mono [0.629]   ; Courier ascender
-            fam = 'sans [0.718]   ; Helvetica ascender
-            true        [0.683]   ; Times ascender
-        ]
-    ]
-
     line-measure: func [
         "Pixel width of text under a style block (for word wrap)."
         text [string!] styles [block!]
@@ -412,14 +397,13 @@ report-pdf: make report-styles [
         ; advance width uses the glyph-scaled size (matches the View's advances)
         sz: (font-size-for styles) * font-scale-for styles
         ; line box uses the *nominal* size and the family line factor, mirroring the
-        ; View's measured `size-text` line height; ascent = height (the View reports
-        ; no separate descent), so baselines, boxes and header/first-line spacing
-        ; all line up between the two renderers
+        ; View's measured `size-text` line height; the ascent splits that box by the
+        ; family fraction (both renderers do this), so boxes/baselines line up
         h: max 1 to integer! round ((font-size-for styles) * font-line-scale-for styles)
         reduce [
             pdf-kit/text-width fno sz text
             h
-            h
+            max 1 to integer! round (h * box-ascent-frac styles)
         ]
     ]
 
@@ -738,27 +722,11 @@ report-pdf: make report-styles [
         hh: mm/2
         ascr: mm/3
         desc: hh - ascr
-        ; text baseline: the View draws each value from the line-box top; the PDF
-        ; draws from a baseline, so lift it by the font's ascender. Bold/heading
-        ; faces sit a few px below the View's line-box top, so push back down by that
-        ; leading (measured: h1/h2/h3 -> 7/6/4px). Boxes below stay anchored to `y`,
-        ; keeping background/frame geometry identical to the View.
-        lead: either (style-heading styles) > 0 [
-            to integer! round ((font-size-for styles) * 0.31)
-        ][0]
-        base: y + hh - (sz * font-ascent-for styles) - lead
-        ; per-family box insets — identical to the View renderer so a background/
-        ; frame box hugs the text the same way in both outputs (box height becomes
-        ; `ascent + bbot - btop`, i.e. the View's `fh + bbot - btop`)
-        fam: style-family styles
-        btop: 0  bbot: 0
-        case [
-            fam = 'mono [btop: -3  bbot: -2]
-            fam = 'sans [btop: -2  bbot: -1]
-            true       [bbot: -1]
-        ]
-        bdesc: desc + bbot
-        bh: hh + bbot - btop
+        ; `y` is the line's baseline (bottom-up, like the View's internal y).
+        ; The box spans the true line box around it: [y - descent, y + ascent].
+        base: y
+        bdesc: desc
+        bh: hh
 
         either join [
             tw: pdf-kit/text-width font-no sz text
@@ -1049,12 +1017,21 @@ report-pdf: make report-styles [
 
     ;=== PDF assembly ===
 
+    line-ascent: func [
+        "Measured ascent of a parsed line block (for header top clamping)."
+        line [block!]
+        /local lm
+    ][
+        lm: line-ink line :pdf-metrics
+        lm/2
+    ]
+
     assemble-pdf: function [
         "Build PDF page objects from page buffers"
         pages [block!] total-pages [integer!]
-        hdr [object! none!] ftr [object! none!] usable-top [integer!]
+        page-hdrs [block!] page-ftrs [block!] usable-top [integer!]
         date-str [string!] time-str [string!] datetime-str [string!]
-        /local pd-pages p page-ps
+        /local pd-pages p page-ps p-h p-f hy
     ][
         pd-pages: copy []
         p: 0
@@ -1066,8 +1043,13 @@ report-pdf: make report-styles [
             replace/all page-ps (pdf-kit/hex "%DATE%")   (pdf-kit/hex date-str)
             replace/all page-ps (pdf-kit/hex "%TIME%")   (pdf-kit/hex time-str)
             replace/all page-ps (pdf-kit/hex "%DATETIME%") (pdf-kit/hex datetime-str)
-            emit-header/tokens page-ps hdr usable-top date-str time-str datetime-str p total-pages
-            emit-footer page-ps ftr p total-pages date-str time-str datetime-str
+            p-h: pick page-hdrs p
+            p-f: pick page-ftrs p
+            if p-h [
+                hy: page-height - margin-top - (line-ascent p-h/lines/1)
+                emit-header/tokens page-ps p-h hy date-str time-str datetime-str p total-pages
+            ]
+            if p-f [emit-footer page-ps p-f p total-pages date-str time-str datetime-str]
             append pd-pages make object! [content: page-ps]
         ]
         pdf-kit/set-paper page-width page-height
@@ -1188,6 +1170,13 @@ report-pdf: make report-styles [
     ]
     ;=== Main entry point ===
 
+    mk-hf: func [
+        "Wrap a header/footer line block as a variant object, or none when empty."
+        blk [block! none!]
+    ][
+        either all [blk not empty? blk][object [lines: blk]][none]
+    ]
+
     generate: function [
         "Generate a multi-page report (default A4, use paper-format to change)"
         page-obj [object!]        "Parsed page from parse-report"
@@ -1197,6 +1186,11 @@ report-pdf: make report-styles [
         hdr: page-obj/header
         ctn: page-obj/content
         ftr: page-obj/footer
+        ; header/footer variants: block 2 (when present) is shown from page 2 on
+        hdr1: mk-hf hdr/lines
+        hdr2: either none? hdr/lines2 [hdr1][mk-hf hdr/lines2]
+        ftr1: mk-hf ftr/lines
+        ftr2: either none? ftr/lines2 [ftr1][mk-hf ftr/lines2]
         ; paper size/orientation comes from the page description
         paper: page-obj/paper
         either paper/2 = 'landscape [paper-format/landscape paper/1][paper-format paper/1]
@@ -1212,7 +1206,36 @@ report-pdf: make report-styles [
         ; already match the glyph sizes, so scaling here would double-count)
         set in self 'line-height max 1 to integer! (font-size * line-height-factor)
 
-        first-line: either all [hdr not empty? hdr/lines][hdr/lines/1][
+        ; header top clamp: the tallest variant's first line; footer band: the
+        ; tallest footer (page-bottom is a fixed limit). In-body overrides count.
+        hdr-ascent: 0
+        blk: either hdr1 [hdr1/lines][none]
+        if blk [hdr-ascent: max hdr-ascent (line-ascent blk/1)]
+        blk: either hdr2 [hdr2/lines][none]
+        if blk [hdr-ascent: max hdr-ascent (line-ascent blk/1)]
+        ftr-band: 0
+        blk: either ftr1 [ftr1/lines][none]
+        if blk [ftr-band: max ftr-band footer-height object [lines: blk] :pdf-metrics]
+        blk: either ftr2 [ftr2/lines][none]
+        if blk [ftr-band: max ftr-band footer-height object [lines: blk] :pdf-metrics]
+        foreach line ctn/lines [
+            if object? line [
+                case [
+                    line/type = 'header [
+                        if not empty? line/lines [
+                            hdr-ascent: max hdr-ascent (line-ascent line/lines/1)
+                        ]
+                    ]
+                    line/type = 'footer [
+                        if not empty? line/lines [
+                            ftr-band: max ftr-band footer-height object [lines: line/lines] :pdf-metrics
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        first-line: either all [hdr1 not empty? hdr1/lines][hdr1/lines/1][
             either all [ctn not empty? ctn/lines][
                 either block? ctn/lines/1 [ctn/lines/1][none]
             ][none]
@@ -1224,9 +1247,10 @@ report-pdf: make report-styles [
             lm: line-ink first-line :pdf-metrics
             ascent: max 1 lm/2
         ]
+        if hdr-ascent > 0 [ascent: hdr-ascent]
         usable-top: page-height - margin-top - ascent
-        ; reserve the full footer (all its lines, incl. a leading empty line)
-        page-bottom: margin-bottom + footer-height ftr :pdf-metrics
+        ; reserve the full footer band (all its lines, incl. a leading empty line)
+        page-bottom: margin-bottom + ftr-band
 
         date-str: form now/date
         time-str: copy/part form now/time ((length? form now/time) - 3)
@@ -1235,6 +1259,12 @@ report-pdf: make report-styles [
         pages: copy []
         page-num: 1
         page-content: copy ""
+        page-hdrs: copy []
+        page-ftrs: copy []
+        hdr-locked?: ftr-locked?: false
+        hdr-pending?: ftr-pending?: false
+        active-hdr: hdr1
+        active-ftr: ftr1
 
         ; DRAW-BG: rasterize once (View only) and stamp it onto every page
         bg-key: none
@@ -1256,12 +1286,21 @@ report-pdf: make report-styles [
         prev-draw?: false
         prev-box: none
         draw-state-reset
-        page-y: emit-header page-content hdr page-y date-str time-str datetime-str
-        prev-line: if all [hdr not empty? hdr/lines][last hdr/lines][none]
+        if active-hdr [
+            page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
+            page-y: emit-header page-content active-hdr page-y date-str time-str datetime-str
+            prev-line: last active-hdr/lines
+        ]
 
         new-page: does [
             append pages page-content
+            append/only page-hdrs active-hdr
+            append/only page-ftrs active-ftr
             page-num: page-num + 1
+            unless hdr-locked? [active-hdr: either page-num = 1 [hdr1][hdr2]]
+            unless ftr-locked? [active-ftr: either page-num = 1 [ftr1][ftr2]]
+            if hdr-pending? [active-hdr: pending-hdr  hdr-locked?: true  hdr-pending?: false]
+            if ftr-pending? [active-ftr: pending-ftr  ftr-locked?: true  ftr-pending?: false]
             page-content: copy ""
             if bg-key [emit-page-bg page-content bg-key page-width page-height]
             emit-font page-content regular-font
@@ -1269,13 +1308,27 @@ report-pdf: make report-styles [
             prev-line: none
             prev-draw?: false
             prev-box: none
-            page-y: emit-header page-content hdr page-y date-str time-str datetime-str
-            prev-line: if all [hdr not empty? hdr/lines][last hdr/lines][none]
+            if active-hdr [
+                page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
+                page-y: emit-header page-content active-hdr page-y date-str time-str datetime-str
+                prev-line: last active-hdr/lines
+            ]
         ]
 
         ww: max 1 (page-width - margin-left - margin-right)
         foreach line ctn/lines [
             box-reset
+            ; an in-body HEADER/FOOTER stages an override for the next page onward
+            if all [object? line find [header footer] line/type][
+                either line/type = 'header [
+                    pending-hdr: mk-hf line/lines
+                    hdr-pending?: true
+                ][
+                    pending-ftr: mk-hf line/lines
+                    ftr-pending?: true
+                ]
+                continue
+            ]
             either object? line [
                 ; step past the preceding text line box before stacking a block.
                 ; DRAW draws from its top, so it hugs the previous line
@@ -1630,9 +1683,11 @@ report-pdf: make report-styles [
         ]
 
         append pages page-content
+        append/only page-hdrs active-hdr
+        append/only page-ftrs active-ftr
         total-pages: length? pages
 
-        pd-pages: assemble-pdf pages total-pages hdr ftr usable-top date-str time-str datetime-str
+        pd-pages: assemble-pdf pages total-pages page-hdrs page-ftrs usable-top date-str time-str datetime-str
         pdf-kit/save-pdf output pd-pages
         if browser [browse output]
         reset-font

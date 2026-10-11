@@ -322,10 +322,37 @@ report-styles: context [
         reduce [dir col]
     ]
 
+    font-size-suffix: func [
+        {Split a font-size style word like i-8 / b-9 / m-10 / ss-12 into [base size];
+         none when the word is not a sized style/family word. Width words (px-80,
+         ch-20) and ids (link-2, hint-2) are not font sizes.}
+        w [word!]
+        /local ss
+    ][
+        ss: size-suffix w
+        if none? ss [return none]
+        if any [find style-words ss/1  not none? family-of ss/1][return ss]
+        none
+    ]
+
+    width-style-atom?: func [
+        "True for an atom that sets a width: a bare integer, px/N / ch/N, or px-N / ch-N."
+        s [any-type!]
+        /local ss
+    ][
+        case [
+            integer? s [true]
+            issue? s [true]
+            all [word? s  ss: size-suffix s  find [px ch] ss/1][true]
+            true [false]
+        ]
+    ]
+
     merge-styles: func [
-        "Merge a line (base) style with a per-value style: per-value wins on colors, alignment, family, heading, format, width; decorations (b i u ...) are additive."
+        "Merge a line (base) style with a per-value style: per-value wins on colors, alignment, family, size, heading, format, width; decorations (b i u ...) are additive."
         base [block!] extra [block!]
-        /local bs es bd bc ed ec ov out s has-int? ndrops new-bd
+        /local bs es bd bc ed ec ov out s has-width? ndrops new-bd
+               fam fss xfam xsize newfam newsize keep cleaned w fssw redundant
     ][
         bs: style-split base
         es: style-split extra
@@ -350,23 +377,78 @@ report-styles: context [
             ; plus the extra color if any, else the base color
             return append copy bd either empty? ec [bc][ec]
         ]
+        ; family and font-size the extra defines (the first of each wins). The
+        ; family is stored as its token (s / m / ss) so it can be recombined with a size.
+        xfam: none  xsize: none
+        foreach s ed [
+            if word? s [
+                unless xfam [
+                    if family-of s [
+                        xfam: either fss: font-size-suffix s [fss/1][s]
+                    ]
+                ]
+                unless xsize [
+                    if fss: font-size-suffix s [xsize: fss/2]
+                ]
+            ]
+        ]
         ; categories extra defines, which replace the base's
         ov: copy []
         if any [find ed '< find ed '> find ed '^][append ov [< > ^]]
-        if any [find ed 'm find ed 's][append ov [m s]]
         if any [find ed 'h1 find ed 'h2 find ed 'h3][append ov [h1 h2 h3]]
         if any [find ed 'money find ed 's1000 find ed 'date find ed 'time find ed 'datetime find ed 'blank][
             append ov [money s1000 date time datetime blank]
         ]
-        has-int?: false
-        foreach s ed [if any [integer? s issue? s][has-int?: true]]
+        has-width?: false
+        foreach s ed [if width-style-atom? s [has-width?: true]]
         out: copy []
         foreach s bd [
-            unless any [find ov s all [has-int? any [integer? s issue? s]]][append out s]
+            fam: none  fss: none
+            if word? s [
+                fam: family-of s
+                fss: font-size-suffix s
+            ]
+            keep: true
+            case [
+                ; a base family word: fold in the extra's family and/or size, so a
+                ; value can override the family, the size, or both (e.g. s-10 -> ss-7)
+                all [fam any [xfam xsize]] [
+                    newfam: any [xfam either none? fss [s][fss/1]]
+                    newsize: any [xsize either fss [fss/2][none]]
+                    append out either newsize [
+                        to word! rejoin [form newfam "-" newsize]
+                    ][
+                        newfam
+                    ]
+                    keep: false
+                ]
+                ; a base sized non-family word (e.g. i-8): fold in the extra's size
+                all [fss xsize] [
+                    append out to word! rejoin [form fss/1 "-" xsize]
+                    keep: false
+                ]
+            ]
+            if keep [
+                unless any [
+                    find ov s
+                    all [has-width? width-style-atom? s]
+                ][append out s]
+            ]
         ]
         foreach s ed [unless find out s [append out s]]
-        append out either empty? ec [bc][ec]
-        out
+        ; drop a bare family word (s/m/ss) when a sized form of it is already present
+        cleaned: copy []
+        foreach s out [
+            redundant: false
+            if all [word? s  family-of s  none? font-size-suffix s][
+                foreach w out [
+                    if all [word? w  fssw: font-size-suffix w  fssw/1 = s][redundant: true  break]
+                ]
+            ]
+            unless redundant [append cleaned s]
+        ]
+        append cleaned either empty? ec [bc][ec]
+        cleaned
     ]
 
     to-id: func [
@@ -532,6 +614,19 @@ report-styles: context [
             if word? s [fam: family-of s  if fam [return fam]]
         ]
         'serif
+    ]
+
+    box-ascent-frac: func [
+        {Fraction of the measured line-box height that lies above the baseline, per
+         family — the font's true ascender. `size-text` reports the whole line box,
+         so both renderers split it with this to place glyphs on a common baseline.}
+        styles [block!]
+    ][
+        case [
+            (style-family styles) = 'mono [0.60]   ; Courier: asc/box
+            (style-family styles) = 'sans [0.715]  ; Helvetica
+            true [0.79]                            ; Times / serif
+        ]
     ]
 
     ;=== Text metrics — single source of truth for widths and line/box heights ===

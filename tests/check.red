@@ -34,12 +34,13 @@ show-call?: func [e [any-type!]][
 captured-report: none
 
 ; Stub used while checking a sample: it captures the report block instead of
-; opening a window.
+; opening a window. It returns "" (like a successful real show-report) so a
+; sample's `if error-msg <> "" [alert/print error-msg]` is a no-op.
 show-report: func [
     report [block!] title [string!]
     /popup popup-fn
     /fit-width
-][captured-report: report]
+][captured-report: report  ""]
 
 ; Headless: swallow the samples' `alert error-msg` (nothing to show).
 alert: func [msg [any-type!]][]

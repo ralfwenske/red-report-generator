@@ -54,15 +54,23 @@ paper-size   := a4 | letter | legal | a3 | a5 | <WxH pair>   ; default a4
 orientation  := landscape | portrait                          ; default portrait
 margin       := top/N | bottom/N | left/N | right/N | margin/N   ; N in points, default 50
 
-section-item := [HEADER [items]]            ; optional
-              | [BODY   [items]]            ; required
-              | [FOOTER [items]]            ; optional
-              | [DRAW-BG density? [draw…]]  ; optional raw page background (§3.1, §16)
+section-item := [HEADER [items] [items2]?]     ; optional; items2 = page 2 and later
+              | [BODY   [items]]               ; required
+              | [FOOTER [items] [items2]?]     ; optional; items2 = page 2 and later
+              | [DRAW-BG density? [draw…]]     ; optional raw page background (§3.1, §16)
 
 item         := … | [DRAW H? [draw…]]         ; BODY-only foreground art (Advanced, §16)
+                 | [HEADER [items]]            ; BODY-only running override (see below)
+                 | [FOOTER [items]]            ; BODY-only running override (see below)
 ```
 
 - `BODY` is **required**; `HEADER` and `FOOTER` are optional and may appear in any order.
+- `HEADER`/`FOOTER` may carry an **optional second block**: the first block is shown on
+  page 1, the second on **page 2 and every later page** (`[]` means "none from page 2 on").
+  Omit the second block to keep one header/footer on all pages. See §10.
+- A `HEADER`/`FOOTER` item placed **inside `BODY`** is a *running override*: it takes
+  effect **from the next page onward** (the page it appears on keeps its current
+  header/footer) and stays in force for the rest of the report. `[]` clears it. See §10.
 - The paper clause sets the page's size, orientation and margins for **both** renderers
   (default a4 portrait, 50 pt margins). Directives may be combined in any order
   (`[landscape a4 top/20 margin/15 …]`, `[600x800 portrait right/10 …]`); when repeated,
@@ -167,7 +175,7 @@ line-item    := [ value style-block? value style-block? … ]
   words as args; they style the whole container and its contents. The style inherits
   down: a section style reaches every line, table row/cell and column cell inside it;
   a table style reaches its rows/cells. Each deeper level merges on top (decorations
-  add; the deeper value wins on colors/alignment/format/width/family). Examples:
+  add; the deeper value wins on colors/alignment/format/width/family/size). Examples:
   `[BODY b [ … ]]`, `[TABLE b BOX ALT [rows]]`.
 - **Negation `!X`.** Any style may carry `!b`/`!i`/`!u`/`!m`/`!s`/`!<`/`!>`/… which drops
   that attribute inherited from **all** higher levels. E.g. a row `[[!b] …]` inside a
@@ -187,8 +195,10 @@ line-item    := [ value style-block? value style-block? … ]
   parser tells a style block apart from a nested line).
 - A **leading style-block** as the line's first element applies to *every* value on the
   line; a value's own style-block is **merged on top of it** — decorations like
-  `b`/`i`/`u` add, and the value wins on colors, alignment, format, width and font
-  family. Example: `[[b red] "Total" "Δ" [i] 5123.88 [money]]` — bold red "Total",
+  `b`/`i`/`u` add, and the value wins on colors, alignment, format, width, font
+  family and font size. A sized word sets family and size together, so a value can
+  override either or both: row `[s/10]` with value style `[ss/7 i]` gives sans 7
+  italic. Example: `[[b red] "Total" "Δ" [i] 5123.88 [money]]` — bold red "Total",
   bold-italic red "Δ", and a bold-red money number. Works for table rows and column
   rows too.
 - A single-segment line is rendered left-aligned; a multi-segment line flows
@@ -516,6 +526,47 @@ Example: `["Page <page> of <pages>" [b] (now) [time]]`
 - Segments with no style block inherit a default **bold** style.
 - Footer lines are laid out from the bottom margin upward.
 
+### 10.1 Page-2 header/footer block
+
+`HEADER`/`FOOTER` accept an optional **second block**. When present, block 1 is used on
+page 1 and block 2 on page 2 and every later page; an empty second block (`[]`) means
+"no header/footer from page 2 on". When the second block is omitted, the first block is
+used on all pages (the previous behaviour).
+
+```red
+[FOOTER [
+    ["Footer" [h3] "" "Page <page> of <pages>"]   ; page 1
+][
+    ["<page> of <pages>" "" "confidential"]       ; page 2 onward
+]]
+```
+
+The reserved header space is the tallest variant's first line and the reserved footer
+space is the tallest footer, so page capacity (and `<pages>`) stays stable across pages.
+
+### 10.2 Running overrides inside BODY
+
+A `HEADER`/`FOOTER` item placed **inside `BODY`** is a running override: it takes effect
+**from the next page onward** — the page it is written on keeps its current header/footer
+— and stays in force to the end of the report (or until the next override). `[]` clears
+the header/footer from the next page on.
+
+```red
+[BODY [
+    ["page 2 content here"]
+    [PAGEBREAK]
+    [HEADER [["Section 2" [h2]]]]         ; shown from page 3 on
+    [FOOTER [[ "Page <page> of <pages>" ]]]
+    ["page 3 content here"]
+]]
+```
+
+Overrides may be written anywhere in the body; the effective header/footer for a page is
+the section default for that page (page 1 vs page 2+, §10.1) with the most recent override
+seen before the page began. An override's height contributes to the reserved band, so
+switching to a taller header/footer never clips the top or bottom margin.
+
+
 ## 11. Evaluation model
 
 ### 11.1 Parenthesized expressions
@@ -599,7 +650,7 @@ Every keyword item is described once, declaratively, in `report-parser`'s
 ; keyword -> [arg-kinds  child-keywords]
 header    [[style]              [table image column pagebreak]]
 footer    [[style]              [table image column pagebreak]]
-body      [[style]              [table image column pagebreak draw frame]]
+body      [[style]              [table image column pagebreak draw frame header footer]]
 table     [[modifier style]     []]
 column    [[width width style]  [image pagebreak]]
 image     [[width file]         []]
@@ -626,7 +677,9 @@ the optional DRAW/FRAME/DRAW-BG/PAGEBREAK numbers. Anything else is reported, e.
 ## 12. Application interface
 
 ```red
-parse-report page            ; -> object! [header content footer] (each: object [args lines])
+parse-report page            ; -> object! [header content footer]
+                             ;    header/footer: object [args lines lines2 extra]
+                             ;    lines2 = page-2+ block (none when absent)
 validate-report page         ; -> "" | error message string
 dump-report page-obj         ; debug print of the parsed structure
 
@@ -651,7 +704,10 @@ size (`h1` = 2×, `h2` = 1.5×, `h3` = 1.17×; the 12 pt default gives 24/18/14 
 before). Line spacing is derived from **measured text**, not from font sizes: each
 renderer supplies a metrics function `text-metrics text styles -> [width height
 ascent]` (View: OS font line box; PDF: Base-14 metrics), and a line's height is the
-largest such `height` among its values. Consecutive baselines are placed so the line
+largest such `height` among its values. `height` is the full line box and `ascent`
+is the font's true ascender (the box split by `report-styles/box-ascent-frac`), so
+values set in different families share one baseline instead of each sitting its own
+descent above the line. Consecutive baselines are placed so the line
 boxes touch, separated by `line-gap-px` (default 1): the baseline distance from one
 line to the next is `descent(prev) + line-gap-px + ascent(next)`. The same metrics
 size each value's background/frame box, so boxes hug the text and cannot overlap the

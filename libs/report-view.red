@@ -67,6 +67,43 @@ report-view: make report-styles [
     bg-cmds: copy []    ; DRAW-BG draw commands (applied to every page)
     current-hdr: none
     current-ftr: none
+    ; per-page header/footer variants (block1 for page 1, block2 for page 2+,
+    ; superseded by in-body HEADER/FOOTER overrides from the next page onward)
+    active-hdr: none
+    active-ftr: none
+    pending-hdr: none
+    pending-ftr: none
+    hdr-pending?: false
+    ftr-pending?: false
+    hdr-locked?: false
+    ftr-locked?: false
+    page-hdrs: none
+    page-ftrs: none
+    hdr1: none  hdr2: none  ftr1: none  ftr2: none
+
+    mk-variant: func [
+        "Wrap a line block as a header/footer variant object, or none when empty."
+        blk [block! none!]
+    ][
+        either all [blk not empty? blk][object [lines: blk]][none]
+    ]
+
+    line-ascent: func [
+        "Measured ascent of a parsed line block (for header top clamping)."
+        line [block!]
+        /local lm
+    ][
+        lm: line-ink line :view-metrics
+        lm/2
+    ]
+
+    set-page-variants: does [
+        "Pick the variants for the current page and apply any pending override."
+        unless hdr-locked? [active-hdr: either page-num = 1 [hdr1][hdr2]]
+        unless ftr-locked? [active-ftr: either page-num = 1 [ftr1][ftr2]]
+        if hdr-pending? [active-hdr: pending-hdr  hdr-locked?: true  hdr-pending?: false]
+        if ftr-pending? [active-ftr: pending-ftr  ftr-locked?: true  ftr-pending?: false]
+    ]
     date-str: ""
     time-str: ""
     datetime-str: ""
@@ -152,8 +189,12 @@ report-view: make report-styles [
         ]
         sz: font-size-for styles
         either any-style? [set-font styles sz][set-font [] font-size]
-        h: to integer! second size-text/with measure-face "hg"   ; ascender + descender
-        a: to integer! second size-text/with measure-face "h"    ; ascender
+        h: to integer! second size-text/with measure-face "hg"   ; line box: ascender + descender
+        ; Red's `size-text` reports the whole line box, not the ascender. The draw
+        ; engine puts the baseline at `y + ascender`, so split the box by the
+        ; family's ascender fraction; otherwise mixed families land a different
+        ; descent above the line baseline.
+        a: to integer! round (h * box-ascent-frac styles)         ; ascender
         ; mono: measure length x one glyph advance. The OS shaper applies
         ; ligatures (ff/fi/fl/ffi) and would otherwise report a narrower run
         ; than the font's cell width, making boxes/columns ragged and differing
@@ -585,7 +626,7 @@ report-view: make report-styles [
         col-w-arg [integer!] align [string!] styles [block!]
         /join "Continue from join-x/join-y position"
         /local any-style? wpx seg-w n fg sz fh tw dx dy link-id hint-id ascent m bt bb
-               fam btop bbot
+
     ][
         if (length? text) = 0 [exit]
 
@@ -601,17 +642,10 @@ report-view: make report-styles [
         ; one measurement drives the text, the baseline offset and the box
         m: view-metrics text styles
         tw: m/1                 ; advance width
-        fh: m/2                 ; ink height (ascender + descender)
+        fh: m/2                 ; line box (ascender + descender)
         ascent: m/3             ; ascender above the baseline
 
-        ; per-family box tweaks (box only; the metrics above still drive layout)
-        fam: style-family styles
-        btop: 0  bbot: 0
-        case [
-            fam = 'mono [btop: -3  bbot: -2]   ; shifted 1px further up
-            fam = 'sans [btop: -2  bbot: -1]   ; shifted 1px further up
-            true       [bbot: -1]              ; serif: 1px gap above the next row
-        ]
+        ; The box is the line box around the baseline: [dy - ascent, dy + descent].
 
         ; width box: px/N is literal; a bare integer or ch/N means N average
         ; characters of this style/font (the alphabet average, not the value text)
@@ -641,8 +675,8 @@ report-view: make report-styles [
             ]
             dy: to-draw-y join-y
 
-            bt: dy - ascent + btop
-            bb: dy - ascent + fh + bbot
+            bt: dy - ascent
+            bb: dy - ascent + fh
 
             _emit-text-decorations dx dy fh tw text fg styles link-id hint-id bt bb
             append page-draw compose [
@@ -660,8 +694,8 @@ report-view: make report-styles [
             ]
             dy: to-draw-y y
 
-            bt: dy - ascent + btop
-            bb: dy - ascent + fh + bbot
+            bt: dy - ascent
+            bb: dy - ascent + fh
 
             _emit-text-decorations dx dy fh tw text fg styles link-id hint-id bt bb
             append page-draw compose [
@@ -955,17 +989,23 @@ report-view: make report-styles [
         "Finalize current page and start a new one"
         append/only pages page-draw
         append/only page-hotspots hotspots
+        append/only page-hdrs active-hdr
+        append/only page-ftrs active-ftr
         hotspots: copy []
         page-num: page-num + 1
+        set-page-variants
         page-draw: compose [fill-pen white pen off box 0x0 (as-pair page-width page-height)]
         if not empty? bg-cmds [append page-draw bg-cmds]
         set-font [] font-size
-        page-y: usable-top
         prev-line: none
         prev-draw?: false
         prev-box: none
-        page-y: draw-header current-hdr page-y date-str time-str datetime-str
-        prev-line: if all [current-hdr not empty? current-hdr/lines][last current-hdr/lines][none]
+        page-y: usable-top
+        if active-hdr [
+            page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
+            page-y: draw-header active-hdr page-y date-str time-str datetime-str
+            prev-line: last active-hdr/lines
+        ]
     ]
 
     ;=== Extracted content emitters ===
@@ -1381,9 +1421,15 @@ report-view: make report-styles [
         "Generate a multi-page report using draw dialect. Returns block of draw blocks."
         page-obj [object!] "Parsed page from parse-report"
         /local first-line first-sz line paper ascent lm dh y0 ww
+               hdr-ascent ftr-band hblk fblk a-h a-f hy
     ][
         current-hdr: page-obj/header
         current-ftr: page-obj/footer
+        ; header/footer variants: block 2 (when present) is shown from page 2 on
+        hdr1: mk-variant current-hdr/lines
+        hdr2: either none? current-hdr/lines2 [hdr1][mk-variant current-hdr/lines2]
+        ftr1: mk-variant current-ftr/lines
+        ftr2: either none? current-ftr/lines2 [ftr1][mk-variant current-ftr/lines2]
         ; paper size/orientation comes from the page description
         paper: page-obj/paper
         either paper/2 = 'landscape [paper-format/landscape paper/1][paper-format paper/1]
@@ -1401,8 +1447,38 @@ report-view: make report-styles [
         ; Clear font cache for fresh report generation
         font-cache: make map! []
 
+        ; header top clamp: the tallest variant's first line (so no variant rises
+        ; above the top margin); footer band: the tallest footer, since page-bottom
+        ; is a fixed limit. In-body overrides are included in both maxima.
+        hdr-ascent: 0
+        hblk: either hdr1 [hdr1/lines][none]
+        if hblk [hdr-ascent: max hdr-ascent (line-ascent hblk/1)]
+        hblk: either hdr2 [hdr2/lines][none]
+        if hblk [hdr-ascent: max hdr-ascent (line-ascent hblk/1)]
+        ftr-band: 0
+        fblk: either ftr1 [ftr1/lines][none]
+        if fblk [ftr-band: max ftr-band footer-height object [lines: fblk] :view-metrics]
+        fblk: either ftr2 [ftr2/lines][none]
+        if fblk [ftr-band: max ftr-band footer-height object [lines: fblk] :view-metrics]
+        foreach line page-obj/content/lines [
+            if object? line [
+                case [
+                    line/type = 'header [
+                        if not empty? line/lines [
+                            hdr-ascent: max hdr-ascent (line-ascent line/lines/1)
+                        ]
+                    ]
+                    line/type = 'footer [
+                        if not empty? line/lines [
+                            ftr-band: max ftr-band footer-height object [lines: line/lines] :view-metrics
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
         first-line: any [
-            all [current-hdr  not empty? current-hdr/lines  current-hdr/lines/1]
+            all [hdr1 not empty? hdr1/lines  hdr1/lines/1]
             all [page-obj/content  not empty? page-obj/content/lines  block? page-obj/content/lines/1  page-obj/content/lines/1]
         ]
         ; place the top of the first line at margin-top: reserve its measured ascent
@@ -1412,9 +1488,10 @@ report-view: make report-styles [
             lm: line-ink first-line :view-metrics
             ascent: lm/2
         ]
+        if hdr-ascent > 0 [ascent: hdr-ascent]
         usable-top: page-height - margin-top - ascent
-        ; reserve the full footer (all its lines, incl. a leading empty line)
-        page-bottom: margin-bottom + footer-height current-ftr :view-metrics
+        ; reserve the full footer band (all its lines, incl. a leading empty line)
+        page-bottom: margin-bottom + ftr-band
 
         date-str: form now/date
         time-str: copy/part form now/time ((length? form now/time) - 3)
@@ -1431,20 +1508,40 @@ report-view: make report-styles [
         if not empty? bg-cmds [append page-draw bg-cmds]
         page-hotspots: copy []
         hotspots: copy []
+        page-hdrs: copy []
+        page-ftrs: copy []
         page-num: 1
+        hdr-locked?: ftr-locked?: false
+        hdr-pending?: ftr-pending?: false
+        active-hdr: hdr1
+        active-ftr: ftr1
         set-font [] font-size
 
-        page-y: usable-top
-        prev-line: none
         prev-draw?: false
         prev-box: none
-        page-y: draw-header current-hdr page-y date-str time-str datetime-str
-        prev-line: if all [current-hdr not empty? current-hdr/lines][last current-hdr/lines][none]
+        prev-line: none
+        page-y: usable-top
+        if active-hdr [
+            page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
+            page-y: draw-header active-hdr page-y date-str time-str datetime-str
+            prev-line: last active-hdr/lines
+        ]
 
         ww: max 1 (page-width - margin-left - margin-right)
 
         ; one content item (text line or block); box accumulation is the caller's job
         emit-item: func [line [block! object!] /local y0][
+            ; an in-body HEADER/FOOTER stages an override for the next page onward
+            if all [object? line find [header footer] line/type][
+                either line/type = 'header [
+                    pending-hdr: mk-variant line/lines
+                    hdr-pending?: true
+                ][
+                    pending-ftr: mk-variant line/lines
+                    ftr-pending?: true
+                ]
+                exit
+            ]
             either object? line [
                 ; step past the preceding text line box before stacking a block.
                 ; DRAW draws from its top, so it hugs the previous line
@@ -1507,7 +1604,7 @@ report-view: make report-styles [
                 if accumulate [track-box?: true]
                 emit-item line
                 unless accumulate [
-                    unless all [object? line  line/type = 'frame][box-finish]
+                    unless all [object? line  find [frame header footer] line/type][box-finish]
                 ]
             ]
             if accumulate [track-box?: false  box-finish]
@@ -1554,6 +1651,8 @@ report-view: make report-styles [
 
         append/only pages page-draw
         append/only page-hotspots hotspots
+        append/only page-hdrs active-hdr
+        append/only page-ftrs active-ftr
         total-pages: length? pages
 
         pn: 0
@@ -1566,8 +1665,15 @@ report-view: make report-styles [
         foreach page pages [
             pn: pn + 1
             page-draw: page
-            draw-header/tokens current-hdr usable-top date-str time-str datetime-str pn total-pages
-            draw-footer current-ftr pn total-pages date-str time-str datetime-str
+            a-h: pick page-hdrs pn
+            a-f: pick page-ftrs pn
+            if a-h [
+                hy: page-height - margin-top - (line-ascent a-h/lines/1)
+                draw-header/tokens a-h hy date-str time-str datetime-str pn total-pages
+            ]
+            if a-f [
+                draw-footer a-f pn total-pages date-str time-str datetime-str
+            ]
         ]
 
         reset-font

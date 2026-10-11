@@ -134,6 +134,23 @@ and image (3pp); `tests/check.red` 19/19 with and without `--pdf`.
 6. Lower h2/h3 heading boxes can drift 1–2px vs the View (rounded line heights
    accumulate); body text and boxes otherwise align.
 
+## Update: true ascent/descent (mixed-family baselines)
+
+The earlier model set `ascent = height` (descent 0) and compensated with per-family
+box insets, so values in different families each sat their own descent above the line
+baseline (mono ~2-3px high vs serif in the View; the PDF misaligned the other way).
+
+`report-styles/box-ascent-frac` now splits the measured line box into a true
+`ascent`/`descent` per family (serif 0.79, sans 0.715, mono 0.60 of the box height).
+Both `view-metrics` and `pdf-metrics` return that ascent; text is placed on the
+baseline, and boxes span the line box `[baseline - descent, baseline + ascent]` — the
+per-family `btop`/`bbot` insets and the PDF `font-ascent-for` fractions are gone.
+Line stepping (`descent(prev) + line-gap-px + ascent(next)`) is unchanged for a
+uniform font, so page counts are unaffected; `tests/check.red` and `--pdf` stay at
+26/27 (one pre-existing `005-Complex-Demo-mod.red` scratch failure). Verified 1:1
+(72 dpi) on hello/sections/styles/table and a mono+serif row: families share one
+baseline in both renderers, View/PDF within ~1px.
+
 ## Handy probe/measure snippets
 
 - View render to PNG: build a `report-view`, `generate parse-report report`,

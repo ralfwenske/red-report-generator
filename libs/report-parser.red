@@ -355,8 +355,8 @@ parse-section: func [
          Default paper is a4 portrait. Parenthesised expressions are evaluated here
          (DRAW/DRAW-BG ops kept deferred), so a literal report needs no compose/deep.}
         page [block!]
-        /local items h-args h-lines c-args c-lines f-args f-lines h-extra c-extra f-extra has-body bg-args bg-lines
-               size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right
+        /local items h-args h-lines h-lines2 c-args c-lines f-args f-lines f-lines2 h-extra c-extra f-extra has-body bg-args bg-lines
+               size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right hs fs hst fst
     ][
         ; evaluate the template's parens once (DRAW/DRAW-BG ops stay deferred)
         page: compose-report page
@@ -396,6 +396,7 @@ parse-section: func [
 
         h-args: h-lines: c-args: c-lines: f-args: f-lines: bg-args: bg-lines: copy []
         h-extra: c-extra: f-extra: copy []
+        h-lines2: f-lines2: none
         has-body: false
 
         items: parse-section/base pos report-styles/base-styles
@@ -415,13 +416,26 @@ parse-section: func [
 
         unless has-body [return none]
 
+        ; HEADER/FOOTER may carry an optional second block: the lines shown on
+        ; page 2 and later ("next page onward" overrides inside BODY supersede it).
+        if all [not empty? h-extra block? h-extra/1][
+            hst: collect-args 'header h-args
+            hs: hst/styles
+            h-lines2: parse-section/base h-extra/1 (report-styles/merge-styles report-styles/base-styles hs)
+        ]
+        if all [not empty? f-extra block? f-extra/1][
+            fst: collect-args 'footer f-args
+            fs: fst/styles
+            f-lines2: parse-section/base f-extra/1 (report-styles/merge-styles report-styles/base-styles fs)
+        ]
+
         object [
             paper:       reduce [size-n orient-n]
             paper-args:  clause
             margin:      object [top: m-top bottom: m-bottom left: m-left right: m-right]
-            header:  object [args: h-args lines: h-lines extra: h-extra]
+            header:  object [args: h-args lines: h-lines lines2: h-lines2 extra: h-extra]
             content: object [args: c-args lines: c-lines extra: c-extra]
-            footer:  object [args: f-args lines: f-lines extra: f-extra]
+            footer:  object [args: f-args lines: f-lines lines2: f-lines2 extra: f-extra]
             draw-bg: object [args: bg-args lines: bg-lines]
         ]
     ]
@@ -531,7 +545,7 @@ parse-section: func [
     item-schema: [
         header    [[style]              [table image column pagebreak]]
         footer    [[style]              [table image column pagebreak]]
-        body      [[style]              [table image column pagebreak draw frame]]
+        body      [[style]              [table image column pagebreak draw frame header footer]]
         table     [[modifier style]     []]
         column    [[width width style]  [image pagebreak]]
         image     [[width file]         []]
@@ -726,7 +740,7 @@ parse-section: func [
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a bg parsed w sch2
+        /local err pg msg ln i row a bg parsed w sch2 x2 k l2 j cap-line wl
     ][
         ;--- Cheap structural pre-check (catches unknown keywords/directives) ---
         msg: page-problem page
@@ -779,7 +793,18 @@ parse-section: func [
             ]
             w: in sec 'extra
             if all [w  not empty? get w][
-                return rejoin [sec-name ": unexpected content after its items block — did you forget a ']' before the next section? (got " mold first get w ")"]
+                wl: get w
+                either find [header footer] sec-kw [
+                    ; HEADER/FOOTER may carry one follow-up block (page 2 and later)
+                    if (length? wl) > 1 [
+                        return rejoin [sec-name ": at most one follow-up block (shown on page 2 and later), got " (length? wl) " items"]
+                    ]
+                    unless block? wl/1 [
+                        return rejoin [sec-name ": the page-2 follow-up must be an items block, got " mold wl/1]
+                    ]
+                ][
+                    return rejoin [sec-name ": unexpected content after its items block — did you forget a ']' before the next section? (got " mold first wl ")"]
+                ]
             ]
             msg: schema-args-problem sec-kw sec/args
             if msg [return rejoin [sec-name ": " msg]]
@@ -793,6 +818,26 @@ parse-section: func [
                 ]
                 unless object? ln [
                     return rejoin [sec-name " line " i ": expected a text line or keyword, got " mold ln]
+                ]
+                ; HEADER/FOOTER inside BODY: a running override applied from the
+                ; next page onward. One items block only; same line-style rules.
+                if all [sec-name = "BODY" find [header footer] ln/type][
+                    msg: schema-args-problem ln/type ln/args
+                    if msg [return rejoin [sec-name " line " i ": " msg]]
+                    x2: in ln 'extra
+                    if all [x2 not empty? get x2][
+                        return rejoin [sec-name " line " i ": " uppercase form ln/type " inside BODY takes a single items block"]
+                    ]
+                    k: 0
+                    foreach l2 ln/lines [
+                        k: k + 1
+                        unless block? l2 [
+                            return rejoin [sec-name " line " i ": " uppercase form ln/type " items must be text lines, got " mold l2]
+                        ]
+                        msg: check-line-styles (uppercase form ln/type) k l2
+                        if msg [return msg]
+                    ]
+                    continue
                 ]
                 either find [header body footer] ln/type [
                         return rejoin [sec-name " line " i ": '" ln/type "' is a section keyword; sections are only allowed at the top level"]
@@ -949,6 +994,17 @@ parse-section: func [
                         ]
                     ]
             ]
+            ; optional page-2-and-later block for HEADER/FOOTER
+            if all [find [header footer] sec-kw not none? sec/lines2][
+                j: 0
+                foreach l2 sec/lines2 [
+                    j: j + 1
+                    if block? l2 [
+                        msg: check-line-styles sec-name j l2
+                        if msg [return msg]
+                    ]
+                ]
+            ]
         ]
         ""
     ]
@@ -965,6 +1021,12 @@ parse-section: func [
         print ["  args:" mold pg/header/args]
         foreach line pg/header/lines [
             print ["  LINE:" mold line]
+        ]
+        if pg/header/lines2 [
+            print "  -- page 2+ --"
+            foreach line pg/header/lines2 [
+                print ["  LINE:" mold line]
+            ]
         ]
 
         print "^/=== BODY ==="
@@ -988,6 +1050,12 @@ parse-section: func [
         print ["  args:" mold pg/footer/args]
         foreach line pg/footer/lines [
             print ["  LINE:" mold line]
+        ]
+        if pg/footer/lines2 [
+            print "  -- page 2+ --"
+            foreach line pg/footer/lines2 [
+                print ["  LINE:" mold line]
+            ]
         ]
     ]
 
