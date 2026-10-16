@@ -12,7 +12,7 @@ Red [
 ; vector by both the View and the PDF.
 
 report: [ 800x900 margin/30
-    [HEADER [["027 - Frame" [h2]]]]
+    [HEADER [["027 - Frame" [f2]]]]
     [BODY [
         ["A FRAME wraps the lines below and measures them before drawing its backdrop." [m]]
         []

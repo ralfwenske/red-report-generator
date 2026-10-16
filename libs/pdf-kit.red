@@ -148,12 +148,11 @@ pdf-kit: context [
     images: copy []
     img-tmp: 0
 
-    embed-image: func [file [file!] /local img jpg tmp key][
-        img: attempt [load file]
-        unless img [
-            print rejoin ["Warning: cannot load image " file]
-            return none
-        ]
+    embed-image-bytes: func [
+        "Embed an in-memory image! as a JPEG XObject; returns its key (or none)."
+        img [image!]
+        /local tmp jpg key
+    ][
         img-tmp: img-tmp + 1
         tmp: to file! rejoin [what-dir %.img-tmp- img-tmp ".jpg"]
         save/as tmp img 'jpeg
@@ -163,6 +162,17 @@ pdf-kit: context [
         append images reduce [key img/size/x img/size/y jpg]
         key
     ]
+
+    embed-image: func [file [file!] /local img][
+        img: attempt [load file]
+        unless img [
+            print rejoin ["Warning: cannot load image " file]
+            return none
+        ]
+        embed-image-bytes img
+    ]
+
+    embed-image-value: func [img [image!]][embed-image-bytes img]
 
     image-dims: func [key [word!] /local pos][
         pos: find images key

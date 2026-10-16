@@ -17,23 +17,23 @@ do-popup: func [type [word!] id [word! number!] txt [string!] /local body page][
         form type " " form id ": " txt
     ]
     page: compose/deep [[BODY [
-        [(body) [h3]]
+        [(body) [f3]]
         ["This popup is itself a report, shown with show-popup."]
         []
         ["In the report dialect you simply insert 'link-N' in a style block"]
-        [{   ["Click " "this link" [link/1] " for a popup."]}  [i]]
+        [{   ["Click " "this link" [link-1] " for a popup."]}  [i]]
         ["or"]
-        [{   ["Hover " "this hint" [hint/2] " for a popup."]}  [i]]
+        [{   ["Hover " "this hint" [hint-2] " for a popup."]}  [i]]
     ]]]
-    show-popup rejoin [form type " " form id] page 460x160
+    show-popup rejoin [form type " " form id] page 460x260
 ]
 
 report: [
     [BODY [
-        ["Links and hints" [h2]]
-        ["Click " "this link" [link/1] " for a popup."]
-        ["Hover " "this hint" [hint/2] " for a moment."]
-        ["A link can carry any id: " "another" [link/42 blue] "."]
+        ["Links and hints" [f2]]
+        ["Click " "this link" [link-1] " for a popup."]
+        ["Hover " "this hint" [hint-2] " for a moment."]
+        ["A link can carry any id: " "another" [link-42 blue] "."]
     ]]
 ]
 

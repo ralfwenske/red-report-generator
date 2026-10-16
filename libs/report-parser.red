@@ -45,7 +45,7 @@ parse-pairs: func [
     result
 ]
 
-known-keywords: [header body footer table image column pagebreak draw-bg draw frame]
+known-keywords: [header body footer table image column pagebreak draw-bg draw frame toc]
 paper-sizes:    [a4 letter legal a3 a5]
 margin-sides:   [top bottom left right margin]
 
@@ -437,6 +437,12 @@ parse-section: func [
             content: object [args: c-args lines: c-lines extra: c-extra]
             footer:  object [args: f-args lines: f-lines lines2: f-lines2 extra: f-extra]
             draw-bg: object [args: bg-args lines: bg-lines]
+            ; the base font this report was parsed with, so a renderer can restore it
+            ; (generate resets the global base font afterwards; without this a later
+            ; PDF pass would fall back to the default serif 12)
+            base-styles: copy report-styles/base-styles
+            base-size: report-styles/font-size
+            base-line-height: report-styles/line-height
         ]
     ]
 
@@ -545,7 +551,7 @@ parse-section: func [
     item-schema: [
         header    [[style]              [table image column pagebreak]]
         footer    [[style]              [table image column pagebreak]]
-        body      [[style]              [table image column pagebreak draw frame header footer]]
+        body      [[style]              [table image column pagebreak draw frame header footer toc]]
         table     [[modifier style]     []]
         column    [[width width style]  [image pagebreak]]
         image     [[width file]         []]
@@ -553,6 +559,7 @@ parse-section: func [
         draw-bg   [[integer]            []]
         frame     [[integer]            []]
         pagebreak [[integer]            []]
+        toc       [[style]              []]
     ]
 
     width-atom?: func [
@@ -597,6 +604,13 @@ parse-section: func [
                     true [none]
                 ]
             ]
+            kw = 'toc [
+                case [
+                    integer? a ['integer]
+                    style-word-ok? a ['style]
+                    true [none]
+                ]
+            ]
             true [
                 either style-word-ok? a ['style][none]
             ]
@@ -622,7 +636,7 @@ parse-section: func [
                 k = 'modifier [append st/modifiers a]
                 k = 'integer  [append st/integers a]
                 true [
-                    st/problem: either find [header footer body] kw [
+                    st/problem: either find [header footer body toc] kw [
                         rejoin ["unknown style word '" mold a "'" style-hint a]
                     ][
                         rejoin ["unexpected argument " mold a " for " uppercase form kw]
@@ -648,6 +662,11 @@ parse-section: func [
             kw = 'table [
                 if (length? st/modifiers) > 2 [
                     st/problem: rejoin ["TABLE takes at most BOX ALT, got " mold st/modifiers]
+                ]
+            ]
+            kw = 'toc [
+                if not empty? st/integers [
+                    st/problem: "TOC no longer takes a depth; add a pattern line for each heading level you want listed"
                 ]
             ]
             find [draw draw-bg frame pagebreak] kw [
@@ -835,6 +854,28 @@ parse-section: func [
                             return rejoin [sec-name " line " i ": " uppercase form ln/type " items must be text lines, got " mold l2]
                         ]
                         msg: check-line-styles (uppercase form ln/type) k l2
+                        if msg [return msg]
+                    ]
+                    continue
+                ]
+                ; TOC inside BODY: pattern lines that expand once pagination is known.
+                if all [sec-name = "BODY" ln/type = 'toc][
+                    msg: schema-args-problem 'toc ln/args
+                    if msg [return rejoin [sec-name " line " i ": " msg]]
+                    x2: in ln 'extra
+                    if all [x2 not empty? get x2][
+                        return rejoin [sec-name " line " i ": TOC takes a single block of pattern lines"]
+                    ]
+                    if empty? ln/lines [
+                        return rejoin [sec-name " line " i ": TOC needs at least one pattern line, e.g. [TOC [<h1> <t-page>]]"]
+                    ]
+                    k: 0
+                    foreach l2 ln/lines [
+                        k: k + 1
+                        unless block? l2 [
+                            return rejoin [sec-name " line " i ": TOC pattern line " k " must be a list of value/style pairs, got " mold l2]
+                        ]
+                        msg: check-line-styles "TOC" k l2
                         if msg [return msg]
                     ]
                     continue

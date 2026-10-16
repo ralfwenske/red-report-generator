@@ -156,7 +156,7 @@ makes it a keyword item, anything else makes it a *line*:
 item        := keyword-item | line-item
 
 keyword-item := [ known-word args… [items]? ]   ; trailing items block optional
-known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK | DRAW | FRAME
+known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK | DRAW | FRAME | TOC
 args         := values up to the first block (words, numbers, files, issues, …)
 
 line-item    := [ value style-block? value style-block? … ]
@@ -334,14 +334,16 @@ proposal suggested "center if no alignment given" — *not* adopted; `'^` was ke
 
 | Style | Meaning |
 |---|---|
-| `b` | bold (implied by `h1`–`h3`) |
+| `b` | bold (implied by `h1`–`h3` and `f1`–`f3`) |
 | `i` | italic |
 | `u` | underline |
 | `!u` | negate underline — suppresses `u`, and the automatic underline implied by `link/N`/`hint/N` |
 | `s` | serif font (the default) |
 | `ss` | sans-serif font |
 | `m` | monospace font (widths are `length × cell advance`, independent of font ligatures, so the View and PDF agree) |
-| `h1` / `h2` / `h3` | heading levels, font sizes 24 / 18 / 14 pt |
+| `f1` / `f2` / `f3` | style-only heading sizes 24 / 18 / 14 pt (2× / 1.5× / 1.17× of the base), bold |
+| `f4` | style-only reset to the base size, not bold (useful to end a heading within a line) |
+| `h1` / `h2` / `h3` | like `f1`/`f2`/`f3` **and** they mark the heading for the table of contents (§9.1) |
 | `word/N` | any style word may carry a size suffix (points), e.g. `i/8` (italic 8), `m/10` (mono 10), `ss/12` (sans 12), `h2/20`; it sets that value's font size, or the whole line when used in the line's leading style block |
 
 ### 5.3 Value formatting
@@ -519,6 +521,36 @@ preferred way to show a date/time is a value + format style (see §5.3):
 
 Example: `["Page <page> of <pages>" [b] (now) [time]]`
 
+### 9.1 Table of contents
+
+`h1`/`h2`/`h3` render like the style-only `f1`/`f2`/`f3` **and** register a heading.
+A `[TOC [pattern lines]]` item in `BODY` is expanded — once every page is known —
+into the collected headings, **in document order** (i.e. page order). The pattern
+line whose placeholder names a level supplies that level's format and indentation,
+so **a heading level is listed exactly when a pattern line for it exists** (there is
+no depth argument):
+
+```
+[TOC [
+    ["<h1>" [f2 px/300] "<t-page>" [f2]]
+    ["  <h2>" [f2 px/300] "<t-page>" [f2]]
+    ["    <h3>" [s/12 px/300] "<t-page>" [s/12]]
+]]
+```
+
+- Each `<h1>`/`<h2>`/`<h3>` pattern line formats headings of that level; entries are
+  emitted in the order the headings occur, so hierarchy shows through the indentation
+  (leading spaces) each pattern supplies. A level with no pattern line is omitted.
+- `<t-page>` becomes that heading's page number; `<hN>` becomes its text (the first
+  value of the heading line).
+- A pattern line with no placeholder is emitted literally, first (a caption such as
+  `["CONTENTS" [f2]]`).
+- Pattern lines are ordinary value/style lines, so `px/N` widths push the page number
+  into a column. Prefer `px/N` on the text segment so the filled-in number cannot
+  re-wrap the line.
+- The entry count comes from the content, so the TOC's height is fixed before page
+  numbers are filled — pagination is stable. `TOC` is `BODY`-only.
+
 ## 10. Headers and footers
 
 - Each header/footer line's segments are placed **positionally**: 1st segment left,
@@ -650,7 +682,7 @@ Every keyword item is described once, declaratively, in `report-parser`'s
 ; keyword -> [arg-kinds  child-keywords]
 header    [[style]              [table image column pagebreak]]
 footer    [[style]              [table image column pagebreak]]
-body      [[style]              [table image column pagebreak draw frame header footer]]
+body      [[style]              [table image column pagebreak draw frame header footer toc]]
 table     [[modifier style]     []]
 column    [[width width style]  [image pagebreak]]
 image     [[width file]         []]
@@ -658,6 +690,7 @@ draw      [[integer]            []]
 draw-bg   [[integer]            []]
 frame     [[integer]            []]
 pagebreak [[integer]            []]
+toc       [[integer style]      []]
 ```
 
 `collect-args` classifies a keyword's arguments into typed buckets (`styles`,
@@ -696,12 +729,13 @@ report-pdf/make-font/line styles size factor
 ```
 
 `make-font` sets the report's **global base font**: familiar style words
-(`b i u s m h1-h3`, `link/N`, colours — see §5.2) plus a size in points, e.g.
+(`b i u s m f1-f4 h1-h3`, `link/N`, colours — see §5.2) plus a size in points, e.g.
 `report-view/make-font [m] 8`. It applies to every value; per-line and per-value
 styles merge on top, and `!X` drops a base style, so any value can still override
-it locally (`[!m ss]` = sans where the base is mono). Headings scale with the base
-size (`h1` = 2×, `h2` = 1.5×, `h3` = 1.17×; the 12 pt default gives 24/18/14 as
-before). Line spacing is derived from **measured text**, not from font sizes: each
+it locally (`[!m ss]` = sans where the base is mono). Heading levels scale with the base
+size (`f1`/`h1` = 2×, `f2`/`h2` = 1.5×, `f3`/`h3` = 1.17×, `f4` = 1×; the 12 pt
+default gives 24/18/14 as before), and `h1`/`h2`/`h3` additionally register as table-of-contents
+headings (§9.1). Line spacing is derived from **measured text**, not from font sizes: each
 renderer supplies a metrics function `text-metrics text styles -> [width height
 ascent]` (View: OS font line box; PDF: Base-14 metrics), and a line's height is the
 largest such `height` among its values. `height` is the full line box and `ascent`
@@ -935,11 +969,13 @@ Both renderers reproduce one restricted subset; anything else is rejected by
 |---|---|
 | state | `pen <tuple>` / `pen off`, `fill-pen <tuple>` / `fill-pen off`, `line-width`, `line-join` (miter/round/bevel), `line-cap` (flat/round/square), `anti-alias` |
 | shapes | `box p1 p2` and `box p1 p2 radius` (rounded), `circle c r`, `ellipse c r`, `line p1 p2`, `triangle p1 p2 p3`, `polygon p1 p2 …` |
+| image | `image <src> <top-left> <bottom-right>` or `image <src> <top-left>` (natural size). `<src>` is an `image!`, a `file!` (auto-loaded), or a word bound to either — so `image %logo.png 10x20 110x70`, `image (load %logo.png) 10x20`, and `img: load %logo.png` + `image img 10x20` all work. **Put a position outside the paren** — `image (load %logo.png) 10x20`, not `image (load %logo.png 10x20)` (a paren returns its last expression, i.e. the pair). Handy for logos/watermarks in `DRAW`, `DRAW-BG` and `FRAME` |
 
 Colors are solid RGB tuples or Red color words (`coffee`, `gold`, …); the PDF resolves
 named words the same way the View does, and `validate-report` **rejects an unknown
-word** (e.g. `rebeccapurple`) instead of silently painting nothing. Not yet supported
-(validation error): `text`, `image`, gradients, `spline`/`arc`/`curve`/`dot`,
+word** (e.g. `rebeccapurple`) instead of silently painting nothing. The `image` command
+embeds as a JPEG XObject in the PDF (like `IMAGE` items). Not yet supported
+(validation error): `text`, gradients, `spline`/`arc`/`curve`/`dot`,
 `shape`/`draw` blocks, `clip`, `effect`, and any transform
 (`translate`/`scale`/`rotate`/`skew`/`matrix`).
 `polygon` takes its points as **separate arguments** (Red's draw dialect rejects a

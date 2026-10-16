@@ -82,22 +82,9 @@ report-pdf: make report-styles [
 
     col-w-px: func [
         "Convert a COLUMN width/gap spec to px using a per-char width"
-        spec [number! issue!] cch [float!]
-        /local s u n
+        spec [any-type!] cch [float!]
     ][
-        either number? spec [
-            to integer! spec * cch
-        ][
-            s: form spec
-            u: copy/part skip tail s -2 2
-            either find ["px" "ch"] u [
-                n: to integer! copy/part s ((length? s) - 2)
-                either u = "ch" [to integer! n * cch][n]
-            ][
-                print rejoin ["Warning: invalid width tag: " s]
-                0
-            ]
-        ]
+        width-spec-px spec cch
     ]
 
     ;=== PostScript low-level emitters ===
@@ -273,9 +260,9 @@ report-pdf: make report-styles [
         fam: style-family styles
         m?: fam = 'mono
         s?: fam = 'sans
-        hd: style-heading styles
+        hd: style-level styles
 
-        either hd > 0 [
+        either find [1 2 3] hd [
             case [
                 all [m? b?] [mono-bold-font]
                 m?          [mono-font]
@@ -594,7 +581,7 @@ report-pdf: make report-styles [
     emit-draw-ops: function [
         "Translate composed draw ops to vector PDF operators (out appended)"
         out [string!] ops [block!]
-        /local parsed st item cmd args x0 x1 y0d y1d pts pp r rx ry
+        /local parsed st item cmd args x0 x1 y0d y1d pts pp r rx ry key imgv
     ][
         parsed: draw-parse ops
         st: make object! [fill: none pen: 0.0.0 width: 1 join: 0 cap: 0]
@@ -674,6 +661,31 @@ report-pdf: make report-styles [
                         ]
                     ]
                 ]
+                image [
+                    ; image <image!|word bound to image!> <top-left> <bottom-right>
+                    if all [(length? args) >= 3  pair? args/2  pair? args/3][
+                        imgv: args/1
+                        unless image? imgv [
+                            if file? imgv [imgv: attempt [load imgv]]
+                            if all [word? imgv  image? attempt [get imgv]][imgv: get imgv]
+                            if all [word? imgv  file? attempt [get imgv]][imgv: attempt [load get imgv]]
+                        ]
+                        if image? imgv [
+                            x0: min args/2/x args/3/x
+                            x1: max args/2/x args/3/x
+                            y0d: min args/2/y args/3/y
+                            y1d: max args/2/y args/3/y
+                            key: pdf-kit/embed-image-value imgv
+                            if key [
+                                emit out [
+                                    "q " (pdf-kit/num (x1 - x0)) " 0 0 " (pdf-kit/num (y1d - y0d))
+                                    " " (pdf-kit/num x0) " " (pdf-kit/num (page-height - y1d))
+                                    " cm /" key " Do Q"
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
             ]
         ]
     ]
@@ -685,7 +697,7 @@ report-pdf: make report-styles [
     ][
         hh: draw-item-height line cursor-y
         ops: compose/deep bind copy line/lines draw-env hh cursor-y
-        emit-draw-ops out ops
+        emit-draw-ops out report-styles/draw-load-images ops
         hh
     ]
 
@@ -1030,8 +1042,9 @@ report-pdf: make report-styles [
         "Build PDF page objects from page buffers"
         pages [block!] total-pages [integer!]
         page-hdrs [block!] page-ftrs [block!] usable-top [integer!]
+        toc-pages [block!]
         date-str [string!] time-str [string!] datetime-str [string!]
-        /local pd-pages p page-ps p-h p-f hy
+        /local pd-pages p page-ps p-h p-f hy k pg
     ][
         pd-pages: copy []
         p: 0
@@ -1043,6 +1056,13 @@ report-pdf: make report-styles [
             replace/all page-ps (pdf-kit/hex "%DATE%")   (pdf-kit/hex date-str)
             replace/all page-ps (pdf-kit/hex "%TIME%")   (pdf-kit/hex time-str)
             replace/all page-ps (pdf-kit/hex "%DATETIME%") (pdf-kit/hex datetime-str)
+            k: 1
+            foreach pg toc-pages [
+                if pg [
+                    replace/all page-ps (pdf-kit/hex (report-styles/toc-page-token k)) (pdf-kit/hex form pg)
+                ]
+                k: k + 1
+            ]
             p-h: pick page-hdrs p
             p-f: pick page-ftrs p
             if p-h [
@@ -1101,6 +1121,7 @@ report-pdf: make report-styles [
         ; raw draw exists only in Red/View; inside headless Red this returns none
         unless draw-works? [return none]
         body: compose/deep bind copy cmds report-pdf
+        body: report-styles/draw-load-images body
         ; draw the background at page resolution, then upscale the raster to the
         ; requested density (draw's own `scale` command is unreliable here)
         base: make image! reduce [as-pair w h white]
@@ -1183,6 +1204,16 @@ report-pdf: make report-styles [
         output   [file!]          "Output PDF file path"
         /browser                  "Generate PDF and open in default PDF viewer"
     ][
+        ; restore this report's base font (generate resets it at the end)
+        if page-obj/base-styles [
+            report-pdf/base-styles: copy page-obj/base-styles
+            report-pdf/font-size: page-obj/base-size
+            report-pdf/line-height: page-obj/base-line-height
+            report-styles/base-styles: copy page-obj/base-styles
+            report-styles/font-size: page-obj/base-size
+            report-styles/line-height: page-obj/base-line-height
+        ]
+        report-styles/expand-tocs page-obj   ; replace TOC items with their expanded lines
         hdr: page-obj/header
         ctn: page-obj/content
         ftr: page-obj/footer
@@ -1261,6 +1292,8 @@ report-pdf: make report-styles [
         page-content: copy ""
         page-hdrs: copy []
         page-ftrs: copy []
+        toc-hcount: 0
+        toc-pages: copy []
         hdr-locked?: ftr-locked?: false
         hdr-pending?: ftr-pending?: false
         active-hdr: hdr1
@@ -1476,7 +1509,7 @@ report-pdf: make report-styles [
                         gap-spec: none
                         pos: 0
                         foreach a col-args [
-                            either any [number? a issue? a a = 'auto][
+                            either width-arg? a [
                                 pos: pos + 1
                                 either pos = 1 [width-spec: a][either pos = 2 [gap-spec: a][]]
                             ][
@@ -1494,13 +1527,9 @@ report-pdf: make report-styles [
                         either width-spec = 'auto [
                             col-col-w: measure-column-pixels styled-rows col-img-w :pdf-metrics
                         ][
-                            either any [number? width-spec issue? width-spec][
-                                col-col-w: col-w-px width-spec cch
-                            ][
-                                col-col-w: measure-column-pixels styled-rows col-img-w :pdf-metrics
-                            ]
+                            col-col-w: col-w-px width-spec cch
                         ]
-                        either all [any [number? gap-spec issue? gap-spec] gap-spec][
+                        either all [width-arg? gap-spec  gap-spec <> 'auto][
                             col-gap: col-w-px gap-spec cch
                         ][
                             col-gap: to integer! cch
@@ -1516,11 +1545,33 @@ report-pdf: make report-styles [
                         ]
 
                         col-total: length? col-rows
-                        col-num: to integer! (page-width - margin-left - margin-right) / (col-col-w + col-gap)
-                        if col-num < 1 [col-num: 1]
+                        col-avail-w: page-width - margin-left - margin-right
+                        either width-spec = 'auto [
+                            ; `auto` width is a preference: allow a small overhang so a
+                            ; near-fit still packs the extra column, then share the row
+                            ; width exactly. Keeps the column count stable across the
+                            ; View's and the PDF's font metrics.
+                            tol: to integer! (col-col-w * 0.03)
+                            col-num: to integer! ((col-avail-w + col-gap + tol) / (col-col-w + col-gap))
+                            if col-num < 1 [col-num: 1]
+                            if col-num > 1 [
+                                fit-w: to integer! ((col-avail-w - ((col-num - 1) * col-gap)) / col-num)
+                                if fit-w < col-col-w [col-col-w: fit-w]
+                            ]
+                        ][
+                            col-num: to integer! (col-avail-w / (col-col-w + col-gap))
+                            if col-num < 1 [col-num: 1]
+                        ]
                         col-idx: 1
                         col-remaining: col-total
                         while [col-remaining > 0][
+                            ; when a column continues onto a new page, step past
+                            ; the header like other content does
+                            if all [prev-line  not prev-draw?][
+                                lm: line-ink prev-line :pdf-metrics
+                                page-y: page-y - (lm/2 + line-gap-px)
+                                prev-line: none
+                            ]
                             ; start a new page if the first remaining row cannot fit
                             if (col-row-height styled-rows/:col-idx col-col-w col-img-styles col-img-row-h) > (page-y - page-bottom) [
                                 if page-y < usable-top [new-page]
@@ -1643,7 +1694,7 @@ report-pdf: make report-styles [
                         fpad: either empty? line/args [0][line/args/1]
                         env: frame-env (fcx - fpad) (fcy - fpad) (fcw + (2 * fpad)) (fch + (2 * fpad)) fcx fcy fcw fch fpad
                         fops: copy ""
-                        emit-draw-ops fops compose/deep bind copy line/ops env
+                        emit-draw-ops fops report-styles/draw-load-images compose/deep bind copy line/ops env
                         insert at page-content (frm-mark + 1) fops
                         box-finish
                         prev-box: reduce [fcx - fpad  fcy - fpad  fcw + (2 * fpad)  fch + (2 * fpad)]
@@ -1665,12 +1716,18 @@ report-pdf: make report-styles [
                 if block? line [
                     set-track-box true
                     lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
+                    wi: 0
                     foreach l lines [
+                        wi: wi + 1
                         if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
                         lm: line-ink l :pdf-metrics
                         if (page-y - lm/3) < page-bottom [
                             new-page
                             if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
+                        ]
+                        if all [wi = 1 (report-styles/line-heading line) > 0][
+                            toc-hcount: toc-hcount + 1
+                            append toc-pages page-num
                         ]
                         render-pairs-line page-content l page-y
                         prev-line: l
@@ -1687,7 +1744,7 @@ report-pdf: make report-styles [
         append/only page-ftrs active-ftr
         total-pages: length? pages
 
-        pd-pages: assemble-pdf pages total-pages page-hdrs page-ftrs usable-top date-str time-str datetime-str
+        pd-pages: assemble-pdf pages total-pages page-hdrs page-ftrs usable-top toc-pages date-str time-str datetime-str
         pdf-kit/save-pdf output pd-pages
         if browser [browse output]
         reset-font

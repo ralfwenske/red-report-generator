@@ -13,14 +13,15 @@ Red [
 
 report: [
     [HEADER [
-        ["ACME Corp" [h1 red] "Quarterly Report" [h2]]
+        ["ACME Corp" [f1 red] "" "Quarterly Report" [f2]]
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]
+        []
     ]]
     [BODY [
-        ["This is page one." [h2]]
+        ["This is page one." [f2]]
         ["The header and footer repeat on every page."]
         [PAGEBREAK]
-        ["This is page two." [h2]]
+        ["This is page two." [f2]]
         ["The page tokens count the pages for you."]
     ]]
     [FOOTER [

@@ -5,21 +5,29 @@ Red [
     Needs: 'View
 ]
 
-; The leading words/pair of the page set the paper: a4/a5/a3/letter/legal or a
-; WxH pair (in points), landscape/portrait, and margins (margin-N, or top-N /
-; bottom-N / left-N / right-N, in points). Both renderers use them. This page
-; is landscape A5 with a 20 pt margin, so it is wider than it is tall.
+text: {
+abcdefghijkl mnopqrstuvwxyz abcdefghijkl mnopqrstuvwxyz abcdefghijkl mnopqrstuvwxyz abcdefghijkl mnopqrstuvwxyz 
+ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVWXYZ 
+1234567890 1234567890 1234567890 1234567890 1234567890 1234567890 1234567890 
 
-report: [
-    landscape a5 margin/20
+}
+
+report: compose/deep [
+    margin-20
     [HEADER [
-        ["ACME Corp" [h1 red] "Quarterly Report" [h2]]
+        ["ACME Corp" [f1 red] "Quarterly Report" [f2]]
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]
     ]]
     [BODY [
-        ["Landscape A5, 20 pt margins" [h2]]
+        ["Landscape A5, 20 pt margins" [f2]]
         ["The paper clause comes first, before the items."]
         ["Try portrait, letter, or an explicit 600x800 pair."]
+        [(text) ]
+        [(text) [ss]]
+        [(text) [m]]
+        [(text) [b]]
+        [(text) [ss b]]
+        [(text) [m b]]
     ]]
     [FOOTER [
         ["Confidential" [b] "" "Page <page> of <pages>" [b]]

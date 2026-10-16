@@ -3,8 +3,10 @@ Red [
     Demo:  "View red code in a view"
     Level: 2
     Needs: 'View
-]
-if exists? %samples/ [      ;make sure we are in the script directory
+] 
+
+;make sure we are in the script directory
+if exists? %samples/ [     
     change-dir %samples/
 ]
 
@@ -33,24 +35,26 @@ foreach line code [
 ]
 
 report: compose/deep [
-    margin/10 920x700 ;a4 landscape
+    margin-10 ;920x900 ;a4 landscape
     [HEADER [
-        ["Red Report" [h1 !m red] "Self Reflection" [h2]]
+        ["Red Report" [f1 !m red] "Self Reflection" [f2]]
         ["Prepared <now>" [i] "" "<page> of <pages>" [b]]
+        []
     ]]
     [BODY [
-        ["  Complete source which produced these pages (pure Red): " 
-            [h2 !m gray white gray]
+        ["  Complete source : " 
+            [f2 !m gray white gray]
         ]
         []
-        [COLUMN auto px/5 (bdy)]
+        ;[COLUMN px/280 0 (bdy)]
+        [COLUMN auto 0 (bdy)]
         []
-        ["  ABOUT  " [h2 link/123]]
+        ["  ABOUT  " [f2 link-123]]
         [ 
             "On next page the " 
-            "  PDF Report  " [h2 100.100.100 yellow !m]
+            "  PDF Report  " [f2 100.100.100 yellow !m]
         ]
-        [IMAGE %code-viewer.png]
+        [IMAGE 800 %code-viewer.png]
     ]]
     [FOOTER [
         [(now/date) [i]]
@@ -60,16 +64,20 @@ report: compose/deep [
 do-popup: function [
     type [lit-word! word!] id [number!] txt [string!]
 ][
-    rpt: compose/deep [margin/5 [BODY 
-        [[(rejoin [type " " id ": "]) (txt) [!m h2 b red black red] ] 
-        ["Place any details about a value" [i]]
-        ["or take any action" [i]]
+    rpt: compose/deep [margin-5 [BODY 
+        [[
+            (rejoin [type " " id ": "]) 
+            (txt) [!m f2 b red black red] 
+         ] 
+         ["Place any details about a value" [i]]
+         ["or take any action" [i]]
         ]
     ]]
     show-popup rejoin [type " " id] rpt 280x70 
 ]
 
 #include %../libs/report-view.red
-report-view/make-font [m] 11
-error-msg: show-report/popup report "code-viewer" :do-popup
-if error-msg <> "" [alert error-msg]
+report-view/make-font [ss] 8
+msg: show-report/popup 
+    report "code-viewer" :do-popup
+if msg <> "" [alert msg]

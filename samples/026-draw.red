@@ -15,21 +15,24 @@ Red [
 ; box (2 or 3 args: p1 p2 [radius]), circle, ellipse, line, triangle, polygon.
 ; See the Advanced usage section of docs/report-syntax-spec.md.
 
-report: [ 800x900 margin/30
-    [HEADER [["026 - Inline draw" [h2]]]]
+if exists? %samples/ [ change-dir %samples/ ]
+img: load %../assets/Red_Language_Tower_Logo.png
+
+report: [ 800x900 margin-30
+    [HEADER [["026 - Inline draw" [f2]]]]
     [BODY [
         ["This paragraph is framed by the DRAW that follows it: prev-* is its box." [b]]
         [DRAW 10 [
             pen 90.120.200
             fill-pen off
             line-width 1
-            box (as-pair (prev-x - 5) (prev-y - 5))
-                (as-pair (prev-x + prev-w + 5) (prev-y + prev-h + 5)) 6
+            box (as-pair (prev-x - 4) (prev-y - 1))
+                (as-pair (prev-x + prev-w + 4) (prev-y + prev-h + 4)) 6
         ]]
         ["The text continues below the frame."]
         []
         ["A row of vector shapes is drawn at the cursor; the text follows underneath."]
-        [DRAW 44 [
+        [DRAW 344 [
             pen 0.0.160
             fill-pen 235.242.255
             line-width 2
@@ -40,12 +43,14 @@ report: [ 800x900 margin/30
             pen off
             fill-pen 255.215.0
             polygon (as-pair (x + 250) (y + 40)) (as-pair (x + 270) y) (as-pair (x + 290) (y + 40))
+            image img 100x200 400x500
         ]]
-        ["Text continues underneath the shapes."]
+        [[f2 red] "Text continues underneath the shapes."]
+        ["(first argument after DRAW indicates height of draw box)"]
     ]]
 ]
 
 #include %../libs/report-view.red
 
 error-msg: show-report/fit-width report "026 - Inline draw"
-if error-msg <> "" [alert error-msg]
+if error-msg <> "" [print error-msg]

@@ -39,32 +39,40 @@ report-styles: context [
 
     ;=== Unit helpers ===
 
+    width-spec-px: func [
+        {Width spec -> page px. A number is N * char-px; px/N -> N; ch/N -> N * char-px.
+         Accepts the normalized word (px-80), a path (px/80), or a legacy issue. 0 if unknown.}
+        spec [any-type!] char-px [number!]
+        /local ss s u n
+    ][
+        case [
+            none? spec [0]
+            number? spec [to integer! (spec * char-px)]
+            all [any [word? spec path? spec]  ss: size-suffix to word! spec][
+                either ss/1 = 'ch [to integer! (ss/2 * char-px)][ss/2]
+            ]
+            issue? spec [
+                s: form spec
+                u: none  n: none
+                case [
+                    find/match s "px-" [u: 'px  n: to integer! skip s 3]
+                    find/match s "ch-" [u: 'ch  n: to integer! skip s 3]
+                    find/match s "px"  [u: 'px  n: to integer! skip s 2]
+                    find/match s "ch"  [u: 'ch  n: to integer! skip s 2]
+                    find s "px"        [u: 'px  n: to integer! copy/part s ((length? s) - 2)]
+                    find s "ch"        [u: 'ch  n: to integer! copy/part s ((length? s) - 2)]
+                ]
+                either u [to integer! either u = 'ch [n * char-px][n]][0]
+            ]
+            true [0]
+        ]
+    ]
+
     width-to-px: func [
         "Normalize a width spec to page units (px). Bare number -> default-unit ('ch or 'px). px/N / ch/N -> explicit units."
-        spec [number! issue!] default-unit [word!]
-        /local s u n
+        spec [any-type!] default-unit [word!]
     ][
-        either number? spec [
-            either default-unit = 'ch [
-                to integer! spec * font-size * 0.5
-            ][
-                to integer! spec
-            ]
-        ][
-            s: form spec
-            u: copy/part skip tail s -2 2
-            either find ["px" "ch"] u [
-                n: to integer! copy/part s ((length? s) - 2)
-                either u = "ch" [
-                    to integer! n * font-size * 0.5
-                ][
-                    n
-                ]
-            ][
-                print rejoin ["Warning: invalid width tag: " s]
-                0
-            ]
-        ]
+        width-spec-px spec either default-unit = 'ch [font-size * 0.5][1]
     ]
 
     ;=== Grayscale fills ===
@@ -243,7 +251,7 @@ report-styles: context [
 
     ; Style words are never colors; a colour word anywhere in the block is
     ; resolved to its tuple (colours may be interleaved with other styles).
-    style-words: [b i u s m ss h1 h2 h3 < > ^ blank money s1000 date time datetime shadow border wrap nowrap !u]
+    style-words: [b i u s m ss h1 h2 h3 f1 f2 f3 f4 < > ^ blank money s1000 date time datetime shadow border wrap nowrap !u]
 
     resolve-colors: func [
         "Resolve every colour word in a style block to a tuple, wherever it appears"
@@ -395,7 +403,9 @@ report-styles: context [
         ; categories extra defines, which replace the base's
         ov: copy []
         if any [find ed '< find ed '> find ed '^][append ov [< > ^]]
-        if any [find ed 'h1 find ed 'h2 find ed 'h3][append ov [h1 h2 h3]]
+        if any [find ed 'h1 find ed 'h2 find ed 'h3 find ed 'f1 find ed 'f2 find ed 'f3 find ed 'f4][
+            append ov [h1 h2 h3 f1 f2 f3 f4]
+        ]
         if any [find ed 'money find ed 's1000 find ed 'date find ed 'time find ed 'datetime find ed 'blank][
             append ov [money s1000 date time datetime blank]
         ]
@@ -557,7 +567,7 @@ report-styles: context [
         ]
     ]
 
-    style-heading: func ["Return heading level (1-3) from styles, or 0" styles [block!] /local s ss b][
+    style-heading: func ["Return heading level (1-3) from h1/h2/h3 (table-of-contents markers), or 0" styles [block!] /local s ss b][
         foreach s styles [
             if word? s [
                 ss: size-suffix s
@@ -568,8 +578,30 @@ report-styles: context [
         0
     ]
 
+    style-level: func [
+        {Styling level (1-4) from h1/h2/h3 or f1/f2/f3/f4: forces the heading size
+         (1=2x, 2=1.5x, 3=1.17x, 4=1x) and, for 1-3, bold. h* also mark TOC entries;
+         f* are the style-only equivalents. Returns 0 when absent.}
+        styles [block!]
+        /local s ss b
+    ][
+        foreach s styles [
+            if word? s [
+                ss: size-suffix s
+                b: either ss [ss/1][s]
+                case [
+                    find [h1 f1] b [return 1]
+                    find [h2 f2] b [return 2]
+                    find [h3 f3] b [return 3]
+                    b = 'f4 [return 4]
+                ]
+            ]
+        ]
+        0
+    ]
+
     heading-size: func [
-        "Font size for heading level, scaled from the base font size (1=2x, 2=1.5x, 3=1.17x)"
+        "Font size for a style level, scaled from the base font size (1=2x, 2=1.5x, 3=1.17x, 4/0=1x)"
         hd [integer!]
     ][
         case [
@@ -614,6 +646,20 @@ report-styles: context [
             if word? s [fam: family-of s  if fam [return fam]]
         ]
         'serif
+    ]
+
+    width-arg?: func [
+        {True for a COLUMN width/gap argument: a number, 'auto, or px/N / ch/N —
+         as a literal issue (px/80) or the normalized word (px-80).}
+        a [any-type!]
+        /local ss
+    ][
+        case [
+            any [number? a issue? a][true]
+            a = 'auto [true]
+            all [word? a  ss: size-suffix a  find [px ch] ss/1][true]
+            true [false]
+        ]
     ]
 
     box-ascent-frac: func [
@@ -685,22 +731,143 @@ report-styles: context [
     ]
 
     font-size-for: func [
-        "Effective font size for a style block: explicit /N size, else the heading size, else the base size."
+        "Effective font size for a style block: explicit /N size, else the style level (h*/f*), else the base size."
         styles [block!]
         /local sz
     ][
-        either sz: style-size styles [sz][heading-size style-heading styles]
+        either sz: style-size styles [sz][heading-size style-level styles]
     ]
 
     style-nondefault-font?: func [
-        "True when a style block needs a non-default font (family, heading or explicit size)."
+        "True when a style block needs a non-default font (family, style level or explicit size)."
         styles [block!]
     ][
         not none? any [
             (style-family styles) <> 'serif
-            (style-heading styles) > 0
+            (style-level styles) > 0
             not none? style-size styles
         ]
+    ]
+
+    line-heading: func [
+        "TOC level (1-3) of a parsed line, or 0. A line is a heading when the style of its first value contains h1/h2/h3."
+        line [block!]
+        /local p
+    ][
+        if empty? line [return 0]
+        p: line/1
+        if all [block? p (length? p) >= 2 block? p/2][return style-heading p/2]
+        0
+    ]
+
+    toc-page-token: func [
+        "Private token for the page of the N-th collected heading, filled in after pagination."
+        n [integer!]
+    ][
+        rejoin ["<toc-page-" n ">"]
+    ]
+
+    toc-heading-text: func [
+        "Plain text of a collected heading line (its first value)."
+        line [block!]
+        /local p
+    ][
+        p: line/1
+        either all [block? p (length? p) >= 1 string? p/1][copy p/1][form p/1]
+    ]
+
+    toc-pattern-level: func [
+        "Heading level a TOC pattern line targets (from <h1>/<h2>/<h3>), or 0 if literal."
+        pline [block!]
+        /local lvl p
+    ][
+        lvl: 0
+        foreach p pline [
+            if all [block? p (length? p) >= 1 string? p/1][
+                case [
+                    find p/1 "<h1>" [lvl: 1]
+                    find p/1 "<h2>" [lvl: 2]
+                    find p/1 "<h3>" [lvl: 3]
+                ]
+            ]
+        ]
+        lvl
+    ]
+
+    toc-subst-line: func [
+        "Clone a pattern line, substituting the heading text and page token."
+        pline [block!] text [string!] token [string!]
+        /local out p
+    ][
+        out: copy/deep pline
+        foreach p out [
+            if all [block? p (length? p) >= 1 string? p/1][
+                p/1: replace/all p/1 "<h1>" text
+                p/1: replace/all p/1 "<h2>" text
+                p/1: replace/all p/1 "<h3>" text
+                p/1: replace/all p/1 "<t-page>" token
+            ]
+        ]
+        out
+    ]
+
+    toc-expand: func [
+        {Expand a TOC item's pattern lines into concrete lines. `headings` is the
+         ordered [level text] list. Entries appear in document order (page order);
+         the pattern line naming a level supplies its format/indent, so a heading
+         level with no pattern line is simply not listed. Literal pattern lines
+         (no <hN>) are emitted first, in pattern order.}
+        toc [object!] headings [block!]
+        /local pats out pline lvl h idx pe have?
+    ][
+        ; level -> pattern line (first pattern line for a level wins)
+        pats: copy []
+        out: copy []
+        foreach pline toc/lines [
+            lvl: toc-pattern-level pline
+            either lvl > 0 [
+                have?: false
+                foreach pe pats [if pe/1 = lvl [have?: true  break]]
+                unless have? [append/only pats reduce [lvl pline]]
+            ][
+                append/only out copy/deep pline
+            ]
+        ]
+        ; heading entries in document order, formatted by their level's pattern
+        idx: 0
+        foreach h headings [
+            idx: idx + 1
+            foreach pe pats [
+                if pe/1 = h/1 [
+                    append/only out toc-subst-line pe/2 h/2 (toc-page-token idx)
+                    break
+                ]
+            ]
+        ]
+        out
+    ]
+
+    expand-tocs: func [
+        "Collect h1/h2/h3 headings in a parsed page's BODY and replace each TOC item with its expanded lines (in place). Called by the renderers, after validation."
+        page-obj [object!]
+        /local headings out it hd
+    ][
+        headings: copy []
+        foreach it page-obj/content/lines [
+            if block? it [
+                hd: line-heading it
+                if hd > 0 [append/only headings reduce [hd (toc-heading-text it)]]
+            ]
+        ]
+        out: copy []
+        foreach it page-obj/content/lines [
+            either all [object? it it/type = 'toc][
+                append out toc-expand it headings
+            ][
+                append/only out it
+            ]
+        ]
+        page-obj/content/lines: out
     ]
 
     line-advance: func [
@@ -1012,6 +1179,11 @@ report-styles: context [
                             val: pair/1
                             sty: either all [(length? pair) >= 2 block? pair/2][pair/2][copy []]
                             txt: either any [string? val number? val date?][format-pair-value val sty][mold val]
+                            ; measure what will actually be drawn: apply the same
+                            ; <page>/<pages> replacement the token pass does, so a row
+                            ; with literal "<page> of <pages>" is not measured longer
+                            ; than its rendered "1 of 2"
+                            txt: replace-tokens txt 1 1 "" "" ""
                             m: do reduce [f txt sty]
                             val-w: val-w + m/1
                         ]
@@ -1058,23 +1230,74 @@ report-styles: context [
 
     draw-command-words: [
         pen fill-pen line-width line-join line-cap anti-alias
-        box circle ellipse line triangle polygon
+        box circle ellipse line triangle polygon image
+    ]
+
+    draw-load-images: func [
+        {Resolve `image` arguments in a composed draw ops block for both renderers.
+         The first argument may be an image!, a file! (loaded), or a word bound to
+         either. Give the box as `image img pos` (natural size) or
+         `image img top-left bottom-right`. Anything unresolved is skipped with a
+         warning (raw DRAW-BG would otherwise crash at draw time).}
+        ops [block!]
+        /local out i n v x imgv p j
+    ][
+        out: copy []
+        i: 1
+        n: length? ops
+        while [i <= n][
+            v: ops/:i
+            if all [word? v  (to word! v) = 'image][
+                j: i + 1
+                x: either j <= n [ops/:j][none]
+                imgv: case [
+                    image? x [x]
+                    file? x [attempt [load x]]
+                    all [word? x  image? attempt [get x]][get x]
+                    all [word? x  file? attempt [get x]][attempt [load get x]]
+                    true [none]
+                ]
+                either all [image? imgv  (j + 1) <= n  pair? ops/(j + 1)][
+                    append/only out 'image
+                    append/only out imgv
+                    p: ops/(j + 1)
+                    append/only out p
+                    either all [(j + 2) <= n  pair? ops/(j + 2)][
+                        append/only out ops/(j + 2)
+                        i: j + 3
+                    ][
+                        append/only out (p + imgv/size)   ; natural size
+                        i: j + 2
+                    ]
+                    continue
+                ][
+                    print "Warning: DRAW image needs an image value and a position pair; skipped"
+                    i: either all [x  not draw-is-command? x][j + 1][j]
+                    continue
+                ]
+            ]
+            append/only out v
+            i: i + 1
+        ]
+        out
     ]
 
     draw-command-arity: [
         pen 1  fill-pen 1  line-width 1  line-join 1  line-cap 1  anti-alias 1
-        box 2  circle 2  ellipse 2  line 2  triangle 3  polygon 1
+        box 2  circle 2  ellipse 2  line 2  triangle 3  polygon 1  image 2
     ]
 
     draw-state-words: [off on round miter bevel flat square butt]
 
     draw-word-ok?: func [
-        "A bare word in draw ops must be a state value (off/round/…) or resolve to a color tuple"
+        "A bare word in draw ops must be a state value (off/round/…), a color tuple, or an image!/file! (the IMAGE command's value)"
         w [word!]
     ][
         any [
             not none? find draw-state-words w
             tuple? attempt [get w]
+            image? attempt [get w]
+            file? attempt [get w]
         ]
     ]
 
@@ -1163,7 +1386,7 @@ report-styles: context [
     draw-shape-extent: func [
         "Accumulate one shape's y-extent into acc (a two-integer block [min max])."
         cmd [word!] args [block!] acc [block!]
-        /local y0 y1 r v
+        /local y0 y1 r v iv
     ][
         switch cmd [
             box [
@@ -1225,6 +1448,24 @@ report-styles: context [
                     ]
                 ]
             ]
+            image [
+                if all [(length? args) >= 2  pair? args/2][
+                    y0: args/2/y
+                    y1: either all [(length? args) >= 3  pair? args/3][args/3/y][
+                        ; natural-size form: the box height is the image's own height
+                        iv: case [
+                            image? args/1 [args/1]
+                            file? args/1 [attempt [load args/1]]
+                            all [word? args/1  image? attempt [get args/1]][get args/1]
+                            all [word? args/1  file? attempt [get args/1]][attempt [load get args/1]]
+                            true [none]
+                        ]
+                        either image? iv [args/2/y + iv/size/y][args/2/y]
+                    ]
+                    if y0 < acc/1 [acc/1: y0]
+                    if y1 > acc/2 [acc/2: y1]
+                ]
+            ]
         ]
     ]
 
@@ -1253,6 +1494,7 @@ report-styles: context [
                 line [draw-shape-extent cmd args acc]
                 triangle [draw-shape-extent cmd args acc]
                 polygon [draw-shape-extent cmd args acc]
+                image [draw-shape-extent cmd args acc]
             ]
         ]
         if not pen-off? [
@@ -1550,7 +1792,9 @@ report-styles: context [
         if line [
             pair: line/1
             caption: pair/1
-            styles: either all [(length? pair) >= 2 block? pair/2][pair/2][copy []]
+            ; resolve colour words to tuples first: style-split only treats tuples
+            ; as colours, so `blue` would otherwise stay a word and be ignored
+            styles: resolve-colors either all [(length? pair) >= 2 block? pair/2][pair/2][copy []]
             rest: copy []
             ; optional width issue (px/N/ch/N): pulled out of the styles, used for sizing
             foreach s styles [

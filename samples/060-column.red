@@ -13,21 +13,23 @@ Red [
 items: [[
     ["one"] ["two"] ["three"] ["four"] ["five"] ["six"]
     ["seven"] ["eight"] ["nine"] ["ten"] ["eleven"] ["twelve"]
+    ["thirteen"] ["fourteen"] ["fifteen"] ["sixteen"] ["seventeen"]
+    ["eighteen"]
 ]]
 
 report: compose/deep [
     [BODY [
-        ["auto width" [h3]]
+        ["auto width" [f3]]
         [COLUMN auto (items)]
-
-        ["fixed 12ch, gap 2" [h3]]
+        []
+        ["fixed 12ch, gap 2" [f3]]
         [COLUMN 12 2 (items)]
-
-        ["fixed px/27, gap px/2" [h3]]
-        [COLUMN px/27 px/2 (items)]
-
-        ["fixed px/90" [h3]]
-        [COLUMN px/90 (items)]
+        []
+        ["fixed #46px, gap #2px" [f3]]
+        [COLUMN #46px #2px (items)]
+        []
+        ["fixed #90px" [f3]]
+        [COLUMN #90px (items)]
     ]]
 ]
 

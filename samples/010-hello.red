@@ -1,36 +1,52 @@
 Red [
-    Title: "010 — Hello"
-    Demo:  "BODY plus one line: the minimum viable report"
+    File: %010-hello.red
+    Demo: "Report showing it's own source (dsl)"
     Level: 1
     Needs: 'View
+] 
+  
+if exists? %samples/ [ change-dir %samples/ ]
+
+attach-style: function [target [block!] pattern [string!] style [block!]][
+    res: copy []
+    foreach item target [
+        either all [string? item find item pattern] [
+            splt: split item pattern          
+            append res reduce [(splt/1) (pattern) (style) (splt/2)]
+        ]
+        [append res compose reduce [(item)]]
+    ]
+    res
+] ;attach-style
+
+script: %010-hello.red
+script-string: reduce [mold load script]
+foreach pattern ["HEAD-ER" "BO-DY" "FOO-TER" ][
+    p: replace pattern "-" ""
+    script-string: attach-style script-string p [red b]
 ]
 
-; A page is a block of items. [BODY [...]] is the required section; each
-; block inside it is one line on the page. A line is value + style pairs,
-; and [h2] makes this line a heading.
-; HEADER and FOOTER are optional; they are repeated on every page.
-; The first three values are placed on the left, centre and right of the line. 
-; <page> and <pages> are replaced with the page number and total pages.
-; the 'compose/deep' is needed to evaluate the date function inside the report block.
-
-report: compose/deep [
+report: compose/deep [ margin-5
     [HEADER [
-        ["Red Report Generator" [h1] "" (now/date) ]
-        ["" "***" (now) [datetime]]
-        []
+        ["Red Report Generator" [f1] "" (now/date) ]
+        [(script) "***" (now) [datetime]]
+        []  
     ]]
     [BODY [
-        ["Hello World" [h2 purple]]
-        ["and line after line"]
+        ["  The source code which produced this report:  " [f3 black yellow]]
         []
-        ["and a blank line before this one"]
+        [[m/9] (script-string) ]
+        [PAGEBREAK]
+        [IMAGE (reduce [rejoin [(script) ".png"]]) [
+            "  A screenshot of this demo  " [f3  blue white blue]
+        ]]
     ]]
     [FOOTER [
-        ["Footer" [h3] "" "Page <page> of <pages>"]
+        ["" "Page <page> of <pages>"  ""]
     ]]
 ]
 
 #include %../libs/report-view.red
 
-error-msg: show-report report "01 — Hello"
+error-msg: show-report report to-string script
 if error-msg <> "" [alert error-msg]

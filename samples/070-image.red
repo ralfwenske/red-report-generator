@@ -22,18 +22,18 @@ if exists? %samples/ [      ;make sure we are in the script directory
 ]
 report: [
     [BODY [
-        ["Intrinsic width; the caption defaults to the file name:" [h3]]
+        ["Intrinsic width; the caption defaults to the file name:" [f3]]
         [IMAGE %../assets/Empress.jpg]
 
-        ["Width as the first argument (bare number = px):" [h3]]
+        ["Width as the first argument (bare number = px):" [f3]]
         [IMAGE 120 %../assets/Empress.jpg ["Empress" [shadow 3 silver link/1]]]
         [IMAGE 200 %../assets/Emperor.jpg ["Emperor" [border gold link/2]]]
 
-        ["No caption, just a frame:" [h3]]
-        ["(automatic pagebreak as it is too tall for the page)" [h3]]
+        ["No caption, just a frame:" [f3]]
+        ["(automatic pagebreak as it is too tall for the page)" [f3]]
         [IMAGE 120 %../assets/Magician.jpg ["" [border 2 silver]]]
 
-        ["Thumbnails (the COLUMN width also sizes the images):" [h3]]
+        ["Thumbnails (the COLUMN width also sizes the images):" [f3]]
         [COLUMN px/60 px/10 image [shadow 5 silver link/1 s/8][
             [IMAGE %../assets/Empress.jpg]
             [IMAGE %../assets/Chariot.jpg]

@@ -80,6 +80,31 @@ report-view: make report-styles [
     page-hdrs: none
     page-ftrs: none
     hdr1: none  hdr2: none  ftr1: none  ftr2: none
+    toc-hcount: 0        ; headings emitted so far (matches parse order)
+    toc-pages: none      ; page number per collected heading
+
+    replace-toc-in-draw: func [
+        "Replace <toc-page-N> tokens in a draw block with the heading's page number."
+        blk [block!] pages [block!]
+        /local i v k pg
+    ][
+        i: 1
+        while [i <= length? blk][
+            v: pick blk i
+            case [
+                string? v [
+                    k: 1
+                    foreach pg pages [
+                        if pg [v: replace/all v (report-styles/toc-page-token k) (form pg)]
+                        k: k + 1
+                    ]
+                    poke blk i v
+                ]
+                block? v [replace-toc-in-draw v pages]
+            ]
+            i: i + 1
+        ]
+    ]
 
     mk-variant: func [
         "Wrap a line block as a header/footer variant object, or none when empty."
@@ -125,8 +150,8 @@ report-view: make report-styles [
         fam: style-family styles
         b?: style-has styles 'b
         i?: style-has styles 'i
-        hd: style-heading styles
-        if all [hd > 0 not b? fam <> 'mono not i?][b?: true]
+        hd: style-level styles
+        if all [find [1 2 3] hd not b? fam <> 'mono not i?][b?: true]
         name: case [
             fam = 'mono [font-face-mono]
             fam = 'sans [font-face-sans]
@@ -292,6 +317,7 @@ report-view: make report-styles [
                             val: pair/1
                             sty: either all [(length? pair) >= 2 block? pair/2][merge-styles col-styles pair/2][copy col-styles]
                             txt: either any [string? val number? val date?][format-pair-value val sty][mold val]
+                            txt: replace-tokens txt 1 1 "" "" ""
                             m: view-metrics txt sty
                             val-w: val-w + m/1
                         ]
@@ -331,42 +357,16 @@ report-view: make report-styles [
 
     col-width-px: func [
         "Convert a COLUMN width/gap spec to px, using real char width for the style set"
-        spec [number! issue!] col-styles [block!]
-        /local s u n
+        spec [any-type!] col-styles [block!]
     ][
-        either number? spec [
-            to integer! spec * col-char-width col-styles
-        ][
-            s: form spec
-            u: copy/part skip tail s -2 2
-            either find ["px" "ch"] u [
-                n: to integer! copy/part s ((length? s) - 2)
-                either u = "ch" [to integer! n * col-char-width col-styles][n]
-            ][
-                print rejoin ["Warning: invalid width tag: " s]
-                0
-            ]
-        ]
+        width-spec-px spec (col-char-width col-styles)
     ]
 
     width-to-px: func [
-        "Normalize a width spec to px (used for image widths; px only in columns)"
-        spec [number! issue!] default-unit [word!]
-        /local s u n
+        "Normalize a width spec to px (used for image widths)"
+        spec [any-type!] default-unit [word!]
     ][
-        either number? spec [
-            to integer! spec
-        ][
-            s: form spec
-            u: copy/part skip tail s -2 2
-            either find ["px" "ch"] u [
-                n: to integer! copy/part s ((length? s) - 2)
-                either u = "ch" [to integer! n * col-char-width []][n]
-            ][
-                print rejoin ["Warning: invalid width tag: " s]
-                0
-            ]
-        ]
+        width-spec-px spec (either default-unit = 'ch [col-char-width []][1])
     ]
 
     to-draw-y: func [
@@ -496,8 +496,9 @@ report-view: make report-styles [
         e
     ]
 
-    _compose-draw: func [ops [block!] hh [integer!]][
-        compose/deep bind copy ops draw-env hh
+    _compose-draw: func [ops [block!] hh [integer!] /local r][
+        r: compose/deep bind copy ops draw-env hh
+        report-styles/draw-load-images r
     ]
 
     ; Binding context for a FRAME's ops: the padded frame box (x/y/w/h) and the
@@ -1013,15 +1014,22 @@ report-view: make report-styles [
     _emit-pairs: func [
         "Render pairs line from content (word-wrapped to the content width)"
         line [block!]
-        /local lines l lm
+        /local lines l lm wi
     ][
         lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
+        wi: 0
         foreach l lines [
+            wi: wi + 1
             if prev-line [page-y: page-y - line-step l prev-line :view-metrics]
             lm: line-ink l :view-metrics
             if all [(page-y - lm/3) < page-bottom  not in-frame?][
                 new-page
                 if prev-line [page-y: page-y - line-step l prev-line :view-metrics]
+            ]
+            ; record the page a TOC heading (h1/h2/h3) lands on, once per line
+            if all [wi = 1  not in-frame?  (report-styles/line-heading line) > 0][
+                toc-hcount: toc-hcount + 1
+                append toc-pages page-num
             ]
             draw-pairs-line l page-y
             prev-line: l
@@ -1262,6 +1270,7 @@ report-view: make report-styles [
                col-rows-per-col col-avail col-cols-fit col-rendered col-ci col-ri col-r
                col-emit-y col-offset col-draw saved-pd hs-before hs-after hs-i hs
                row used-h col-max-h ri rr end overflow? col-styles col-img-styles col-img-w col-img-row-h width-spec gap-spec pos
+               col-avail-w fit-w tol lm srows
     ][
         col-args: line/args
         col-rows: line/lines
@@ -1278,7 +1287,7 @@ report-view: make report-styles [
         gap-spec: none
         pos: 0
         foreach a col-args [
-            either any [number? a issue? a a = 'auto][
+            either width-arg? a [
                 pos: pos + 1
                 either pos = 1 [width-spec: a][either pos = 2 [gap-spec: a][]]
             ][
@@ -1286,11 +1295,22 @@ report-view: make report-styles [
             ]
         ]
         either width-spec = 'auto [
-            col-col-w: measure-column-pixels col-rows col-styles col-img-w
+            ; measure with the same AFM metrics the PDF uses, so `auto` picks the
+            ; same column count in both renderers (the View's size-text path can
+            ; differ from the PDF/OS font by enough to change the column count)
+            either empty? col-styles [
+                col-col-w: report-styles/measure-column-pixels col-rows col-img-w :report-pdf/pdf-metrics
+            ][
+                srows: copy []
+                foreach c-r col-rows [
+                    append/only srows either block? c-r [col-apply-styles c-r col-styles][c-r]
+                ]
+                col-col-w: report-styles/measure-column-pixels srows col-img-w :report-pdf/pdf-metrics
+            ]
         ][
             col-col-w: col-width-px width-spec col-styles
         ]
-        either all [any [number? gap-spec issue? gap-spec] gap-spec][
+        either all [width-arg? gap-spec  gap-spec <> 'auto][
             col-gap: col-width-px gap-spec col-styles
         ][
             col-gap: col-char-width col-styles
@@ -1306,12 +1326,35 @@ report-view: make report-styles [
         ]
 
         col-total: length? col-rows
-        col-num: to integer! (page-width - margin-left - margin-right) / (col-col-w + col-gap)
-        if col-num < 1 [col-num: 1]
+        col-avail-w: page-width - margin-left - margin-right
+        either width-spec = 'auto [
+            ; `auto` width is a preference: allow a small overhang so a near-fit
+            ; still packs the extra column, then share the row width exactly
+            ; (the widest rows may overhang by a few px — negligible). Keeps the
+            ; column count stable across the View's and the PDF's font metrics.
+            tol: to integer! (col-col-w * 0.03)
+            col-num: to integer! ((col-avail-w + col-gap + tol) / (col-col-w + col-gap))
+            if col-num < 1 [col-num: 1]
+            if col-num > 1 [
+                fit-w: to integer! ((col-avail-w - ((col-num - 1) * col-gap)) / col-num)
+                if fit-w < col-col-w [col-col-w: fit-w]
+            ]
+        ][
+            col-num: to integer! (col-avail-w / (col-col-w + col-gap))
+            if col-num < 1 [col-num: 1]
+        ]
         col-idx: 1
         col-remaining: col-total
 
         while [col-remaining > 0][
+            ; when a column continues onto a new page, step past the header the
+            ; same way text/objects do (normal items do this in emit-item; the
+            ; column draws directly, so it would otherwise sit on the header line)
+            if all [prev-line  not prev-draw?][
+                lm: line-ink prev-line :view-metrics
+                page-y: page-y - (lm/2 + line-gap-px)
+                prev-line: none
+            ]
             ; start a new page if the first remaining row cannot fit
             if (col-row-height col-rows/:col-idx col-col-w col-img-styles col-img-row-h) > (page-y - page-bottom) [
                 if page-y < usable-top [new-page]
@@ -1423,6 +1466,17 @@ report-view: make report-styles [
         /local first-line first-sz line paper ascent lm dh y0 ww
                hdr-ascent ftr-band hblk fblk a-h a-f hy
     ][
+        ; restore this report's base font (generate resets it at the end, so a
+        ; later PDF pass would otherwise fall back to the default serif 12)
+        if page-obj/base-styles [
+            report-view/base-styles: copy page-obj/base-styles
+            report-view/font-size: page-obj/base-size
+            report-view/line-height: page-obj/base-line-height
+            report-styles/base-styles: copy page-obj/base-styles
+            report-styles/font-size: page-obj/base-size
+            report-styles/line-height: page-obj/base-line-height
+        ]
+        report-styles/expand-tocs page-obj   ; replace TOC items with their expanded lines
         current-hdr: page-obj/header
         current-ftr: page-obj/footer
         ; header/footer variants: block 2 (when present) is shown from page 2 on
@@ -1501,6 +1555,7 @@ report-view: make report-styles [
         bg-cmds: copy []
         if all [object? page-obj/draw-bg not empty? page-obj/draw-bg/lines][
             bg-cmds: compose/deep bind copy page-obj/draw-bg/lines report-view
+            bg-cmds: report-styles/draw-load-images bg-cmds
         ]
 
         pages: copy []
@@ -1510,6 +1565,8 @@ report-view: make report-styles [
         hotspots: copy []
         page-hdrs: copy []
         page-ftrs: copy []
+        toc-hcount: 0
+        toc-pages: copy []
         page-num: 1
         hdr-locked?: ftr-locked?: false
         hdr-pending?: ftr-pending?: false
@@ -1640,7 +1697,7 @@ report-view: make report-styles [
                 fcx: margin-left  fcw: ww  fcy: to-draw-y y0  fch: y0 - page-y
             ]
             env: frame-env (fcx - pad) (fcy - pad) (fcw + (2 * pad)) (fch + (2 * pad)) fcx fcy fcw fch pad
-            append page-draw compose/deep bind copy line/ops env
+            append page-draw report-styles/draw-load-images compose/deep bind copy line/ops env
             append page-draw buffered
             prev-box: reduce [fcx - pad  fcy - pad  fcw + (2 * pad)  fch + (2 * pad)]
             prev-draw?: true
@@ -1659,6 +1716,7 @@ report-view: make report-styles [
         foreach page pages [
             pn: pn + 1
             replace-tokens-in-draw page pn total-pages date-str time-str datetime-str
+            replace-toc-in-draw page toc-pages
         ]
 
         pn: 0
@@ -1695,23 +1753,25 @@ report-view: make report-styles [
     get-page-height: does [page-height]
 
     show-viewer: func [
-        "Display rendered pages in a viewer window with navigation and zoom"
+        "Display pages in a viewer window with navigation and zoom"
         page-obj [object!] "needed for pdf generation"
-        rendered [block!] "Block of image! (one per page, from render-page)"
+        page-draws [block!] "Block of page draw blocks (one per page, from generate)"
         window-title [string!] "Window title"
         popup-fn [function! none!] "func [type [lit-word!] id [integer!] text [string!]]"
         /fit-width "Start in fit-width mode (default: full/proportional view)"
         /local current-page current-img fit-width? scroll-y toolbar-h
                popup-handler hovered-hs hint-active hint-start
                sv-page-width sv-page-height sv-page-hotspots
-               screen-to-page hit-test scale-view update-buttons showpage
+               screen-to-page hit-test ensure-img scale-view update-buttons showpage
                display-title
                win btn-first btn-prev btn-next btn-last page-label fit-cb
                clip-f img-f p parentsize vp-w vp-h iw ih
-               display-w display-h max-scroll delta page-pos new-hs hs pn
+               max-scroll delta page-pos new-hs hs pn
+               zoom-pct last-pn last-zoom last-img pw ph ratio
     ][
         current-page: 1
         current-img: none
+        last-pn: 0  last-zoom: 0  last-img: none   ; single-entry render cache
         fit-width?: fit-width          ; seeded by the /fit-width refine (default full view)
         scroll-y: 0
         toolbar-h: 50
@@ -1759,45 +1819,55 @@ report-view: make report-styles [
             none
         ]
 
+        ; Render the current page at the exact display zoom (single-entry cache),
+        ; so the viewer shows it 1:1 with no second (face) resample.
+        ensure-img: func [z [integer!] /local pn][
+            pn: current-page
+            either all [last-pn = pn  last-zoom = z][
+                current-img: last-img
+            ][
+                current-img: render-page (pick page-draws pn) z
+                last-pn: pn  last-zoom: z  last-img: current-img
+            ]
+        ]
+
         scale-view: does [
-            unless current-img [exit]
+            if empty? page-draws [exit]
             parentsize: clip-f/parent/size
             vp-w: parentsize/x - 18
             vp-h: parentsize/y - toolbar-h - 30
             if any [vp-w < 50 vp-h < 50][exit]
             clip-f/size: as-pair vp-w vp-h
+            ; Pick the zoom (%) that makes the page raster fit the viewport, render
+            ; the page at that zoom, then display 1:1 — a single resample, so photos
+            ; (and text) stay as sharp as the PDF, and resizing is smooth (1% steps).
+            pw: sv-page-width  ph: sv-page-height
+            ratio: either fit-width? [
+                vp-w / (pw * 1.0)
+            ][
+                min (vp-w / (pw * 1.0)) (vp-h / (ph * 1.0))
+            ]
+            zoom-pct: max 5 to integer! (ratio * 100)   ; floor: never overflows the viewport
+            ensure-img zoom-pct
             iw: current-img/size/x
             ih: current-img/size/y
             img-f/image: current-img
-            either fit-width? [
-                display-w: vp-w
-                display-h: to integer! vp-w * ih / iw
-                max-scroll: max 0 display-h - vp-h
-                scroll-y: max 0 min scroll-y max-scroll
-                img-f/size: as-pair display-w display-h
-                img-f/offset: as-pair 0 (0 - scroll-y)
-            ][
-                either (iw / ih) > (vp-w / vp-h) [
-                    img-f/size: as-pair vp-w to integer! vp-w * ih / iw
-                ][
-                    img-f/size: as-pair to integer! vp-h * iw / ih  vp-h
-                ]
-                img-f/offset: as-pair to integer! (vp-w - img-f/size/x) / 2  0
-                scroll-y: 0
-            ]
+            img-f/size: as-pair iw ih          ; 1:1 (no face resample)
+            max-scroll: max 0 ih - vp-h
+            scroll-y: max 0 min scroll-y max-scroll
+            img-f/offset: as-pair to integer! (vp-w - iw) / 2  (0 - scroll-y)
         ]
 
         update-buttons: does [
             btn-first/enabled?: current-page > 1
             btn-prev/enabled?: current-page > 1
-            btn-next/enabled?: current-page < length? rendered
-            btn-last/enabled?: current-page < length? rendered
-            page-label/text: rejoin ["Page " current-page " / " length? rendered]
+            btn-next/enabled?: current-page < length? page-draws
+            btn-last/enabled?: current-page < length? page-draws
+            page-label/text: rejoin [current-page " / " length? page-draws]
         ]
 
         showpage: does [
-            if any [empty? rendered current-page < 1 current-page > length? rendered] [exit]
-            current-img: pick rendered current-page
+            if any [empty? page-draws current-page < 1 current-page > length? page-draws] [exit]
             scroll-y: 0
             hovered-hs: none
             hint-active: false
@@ -1807,14 +1877,15 @@ report-view: make report-styles [
 
         win: layout/flags  [
             title display-title
-            size 800x600
+            size 595x910
             backdrop 230.230.230
+            style pg-btn: button 230.230.230 35x20 font [color: red] bold
             on-key [
                 case [
                     all [event/ctrl? event/key = 'left]  [current-page: 1 showpage]
-                    all [event/ctrl? event/key = 'right] [current-page: length? rendered showpage]
+                    all [event/ctrl? event/key = 'right] [current-page: length? page-draws showpage]
                     event/key = 'left  [if current-page > 1 [current-page: current-page - 1 showpage]]
-                    event/key = 'right [if current-page < length? rendered [current-page: current-page + 1 showpage]]
+                    event/key = 'right [if current-page < length? page-draws [current-page: current-page + 1 showpage]]
                     all [fit-width? event/key = 'up] [
                         scroll-y: max 0 scroll-y - 40
                         do [scale-view]
@@ -1827,12 +1898,12 @@ report-view: make report-styles [
             ]
             p: panel white 100x50 [
                 across
-                btn-first: button "<<"  [current-page: 1 showpage]
-                btn-prev: button "<"  [if current-page > 1 [current-page: current-page - 1 showpage]]
-                page-label: text  "" center
-                btn-next: button ">" [if current-page < length? rendered [current-page: current-page + 1 showpage]]
-                btn-last: button ">>" [current-page: length? rendered showpage]
-                btn-pdf: button "Save PDF" [
+                btn-first: pg-btn "<<" [current-page: 1 showpage]
+                btn-prev: pg-btn "<" [if current-page > 1 [current-page: current-page - 1 showpage]]
+                page-label: text 50 center
+                btn-next: pg-btn ">" [if current-page < length? page-draws [current-page: current-page + 1 showpage]]
+                btn-last: pg-btn ">>" [current-page: length? page-draws showpage]
+                btn-pdf: button 80 "Save_PDF" [
                     dir: request-dir/title/dir rejoin ["Where to store " window-title ".pdf  ?"] %./pdf-reports/
                     if dir [
                         file: to-file rejoin [dir safe-file-stem window-title ".pdf"]
@@ -1841,13 +1912,21 @@ report-view: make report-styles [
                         alert rejoin ["Success" newline file newline " saved !" newline ""]
                     ]
                 ]
-                btn-show-pdf: button "Show PDF" [
+                btn-show-pdf: button 80 "Show_PDF" [
                         file: to file! rejoin ["." safe-file-stem window-title ".pdf"]
                         replace/all file " " ""
                         report-pdf/generate page-obj file 
                         browse  file
                         wait 3
                         delete file
+                ]
+                button "to-image" 85 [
+                    img: to-image face/parent/parent
+                    dir: request-dir/title/dir rejoin ["Where to store " window-title ".jpg  ?"] %./samples/
+                    wait 1
+                    if dir [
+                        save/as to-file rejoin [dir safe-file-stem window-title ".png"] img 'png
+                    ]
                 ]
                 pad 10x0
                 fit-cb: check "Fit Width" fit-width? [
@@ -1906,7 +1985,7 @@ report-view: make report-styles [
                         do [scale-view]
                     ][
                         either delta < 0 [
-                            if current-page < length? rendered [current-page: current-page + 1 showpage]
+                            if current-page < length? page-draws [current-page: current-page + 1 showpage]
                         ][
                             if current-page > 1 [current-page: current-page - 1 showpage]
                         ]
@@ -1934,7 +2013,7 @@ show-report: func [
     window-title [string!] "Window title"
     /popup popup-fn [function! none!] "func [type [word!] id [word! number!] text [string!]]"
     /fit-width "Start in fit-width mode (default: full/proportional view)"
-    /local viewer pgs rendered p msg
+    /local viewer pgs msg
 ][
     ; Validate first: return the problem message instead of opening a window.
     msg: validate-report report
@@ -1944,14 +2023,10 @@ show-report: func [
     viewer: make report-view []
     page-obj: parse-report report
     pgs: viewer/generate page-obj
-    rendered: copy []
-    foreach p pgs [
-        append/only rendered viewer/render-page p 300
-    ]
     either fit-width [
-        viewer/show-viewer/fit-width page-obj rendered window-title :popup-fn
+        viewer/show-viewer/fit-width page-obj pgs window-title :popup-fn
     ][
-        viewer/show-viewer page-obj rendered window-title :popup-fn
+        viewer/show-viewer page-obj pgs window-title :popup-fn
     ]
     ""   ; success: the window was shown and closed
 ]

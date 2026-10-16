@@ -9,14 +9,14 @@ Red [
 ; (width in ch, alignment, number format). BOX draws the borders, ALT shades
 ; every second data row. A table that runs out of room continues on the next
 ; page and repeats the header; [PAGEBREAK] forces that here.
-
+;
 report: [
     [HEADER [
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]
         []
     ]]
     [BODY [
-        ["Widget sales" [h2]]
+        ["Widget sales" [f2]]
         [TABLE [
             ["Product" [< 18] "Qty" [> 6] "Unit" [> 10 money] "Total" [> 12 money]]
             ["Widget A" 120 25.00 3000.00]
@@ -38,6 +38,7 @@ report: [
             [PAGEBREAK]
             ["Gadget X" 3 149.50 448.50]
             ["Gadget Y" 9 12.75 114.75]
+            ["Gadget Z" 9 12.75 114.75 [b]]
             ["TOTALS" [b] "" "" 7266.25 [b money]]
         ]]
     ]]
