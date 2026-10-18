@@ -1,0 +1,480 @@
+     %               op!           Returns what is left over when one value is divided by another.
+     *               op!           Returns the product of two values.
+     **              op!           Returns a number raised to a given power (exponent).
+     +               op!           Returns the sum of the two values.
+     -               op!           Returns the difference between two values.
+     /               op!           Returns the quotient of two values.
+     //              op!           Wrapper for MOD that handles errors like REMAINDER. Negligible values (compared to A and B) are rounded to zero.
+     <               op!           Returns TRUE if the first value is less than the second.
+     <<              op!           Shift bits to the left.
+     <=              op!           Returns TRUE if the first value is less than or equal to the second.
+     <>              op!           Returns TRUE if two values are not equal.
+     =               op!           Returns TRUE if two values are equal.
+     ==              op!           Returns TRUE if two values are equal, and also the same datatype.
+     =?              op!           Returns TRUE if two values have the same identity.
+     >               op!           Returns TRUE if the first value is greater than the second.
+     >=              op!           Returns TRUE if the first value is greater than or equal to the second.
+     >>              op!           Shift bits to the right.
+     >>>             op!           Shift bits to the right (unsigned).
+     ?               function!     Displays information about functions, values, objects, and datatypes.
+     ??              function!     Prints a word and the value it refers to (molded).
+     a-an            function!     Returns the appropriate variant of a or an (simple, vs 100% grammatically correct).
+     about           function!     Print Red version information.
+     absolute        action!       Returns the non-negative value.
+     acos            function!     Returns the trigonometric arccosine in radians in range [0,pi].
+     action?         function!     Returns true if the value is this type.
+     add             action!       Returns the sum of the two values.
+     alert           function!     Displays an alert message in a pop-up modal window.
+     all             native!       Evaluates and returns the last value if all are truthy; else NONE.
+     all-word?       function!     Returns true if the value is any type of all-word.
+     also            function!     Returns the first value, but also evaluates the second.
+     alter           function!     If a value is not found in a series, append it; otherwise, remove it. Returns true if added.
+     and             op!           Returns the first value ANDed with the second.
+     and~            action!       Returns the first value ANDed with the second.
+     any             native!       Evaluates and returns the first truthy value, if any; else NONE.
+     any-block?      function!     Returns true if the value is any type of any-block.
+     any-function?   function!     Returns true if the value is any type of any-function.
+     any-list?       function!     Returns true if the value is any type of any-list.
+     any-object?     function!     Returns true if the value is any type of any-object.
+     any-path?       function!     Returns true if the value is any type of any-path.
+     any-point?      function!     Returns true if the value is any type of any-point.
+     any-string?     function!     Returns true if the value is any type of any-string.
+     any-word?       function!     Returns true if the value is any type of any-word.
+     append          action!       Inserts value(s) at series tail; returns series head.
+     apply           native!       Apply a function to a reduced block of arguments.
+     arccosine       native!       Returns the trigonometric arccosine in degrees in range [0,180].
+     arcsine         native!       Returns the trigonometric arcsine in degrees in range [-90,90].
+     arctangent      native!       Returns the trigonometric arctangent in degrees in range [-90,90].
+     arctangent2     native!       Returns the smallest angle between the vectors (1,0) and (x,y) in degrees (-180,180].
+     as              native!       Coerce a series into a compatible datatype without copying it.
+     as-color        routine!      Combine R, G and B values into a tuple.
+     as-ipv4         routine!      Combine a, b, c and d values into a tuple.
+     as-money        native!       Combine currency code and amount into a monetary value.
+     as-pair         native!       Combine X and Y values into a pair.
+     as-point2D      native!       Combine X and Y values into a 2D point.
+     as-point3D      native!       Combine X, Y and Z values into a 3D point.
+     as-rgba         routine!      Combine R, G, B and A color components into a tuple.
+     asin            function!     Returns the trigonometric arcsine in radians in range [-pi/2,pi/2]).
+     ask             function!     Prompt the user for input.
+     at              action!       Returns a series at a given index.
+     atan            function!     Returns the trigonometric arctangent in radians in range [-pi/2,+pi/2].
+     atan2           function!     Returns the smallest angle between the vectors (1,0) and (x,y) in range (-pi,pi].
+     attempt         function!     Tries to evaluate a block and returns result or NONE on error.
+     average         function!     Returns the average of all values in a block.
+     back            action!       Returns a series at the previous index.
+     binary?         function!     Returns true if the value is this type.
+     bind            native!       Bind words to a context; returns rebound words.
+     bitset?         function!     Returns true if the value is this type.
+     block?          function!     Returns true if the value is this type.
+     body-of         function!     Returns the body of a value that supports reflection.
+     break           native!       Breaks out of a loop, while, until, repeat, foreach, etc.
+     browse          native!       Opens the URL in a web browser or the file in the associated application.
+     call            native!       Executes a shell command to run another process.
+     caret-to-offset function!     Given a text position, returns the corresponding coordinate relative to the top-left of the layout box.
+     case            native!       Evaluates the block following the first truthy condition.
+     catch           native!       Catches a throw from a block and returns its value.
+     cause-error     function!     Causes an immediate error throw, with the provided information.
+     cd              function!     Changes the active directory path.
+     center-face     function!     Center a face inside its parent.
+     change          action!       Changes a value in a series and returns the series after the change.
+     change-dir      function!     Changes the active directory path.
+     char?           function!     Returns true if the value is this type.
+     charset         function!     Shortcut for `make bitset!`.
+     checksum        native!       Computes a checksum, CRC, hash, or HMAC.
+     class-of        function!     Returns the class ID of an object.
+     clean-path      function!     [[no-trace] {Cleans-up '.' and '..' in path; returns the cleaned path} file [file! url! string!] /only "Do not prepend current directory" /dir "Add a trailing / if missing" /local out cnt f not-file? prot]
+     clear           action!       Removes series values from current index to tail; returns new tail.
+     clear-reactions function!     Removes all reactive relations.
+     clock           function!     Display execution time of code, returning result of it's evaluation.
+     close           action!       Closes a port.
+     collect         function!     Collect in a new block all the values passed to KEEP function from the body block.
+     collect-calls   routine!      [blk [block!]]
+     comment         function!     Consume but don't evaluate the next value.
+     complement      action!       Returns the opposite (complementing) value of the input value.
+     complement?     native!       Returns TRUE if the bitset is complemented.
+     compose         native!       Returns a copy of a block, evaluating only parens.
+     compress        native!       Compresses data.
+     construct       native!       Makes a new object from an unevaluated spec; standard logic words are evaluated.
+     context         function!     Makes a new object from an evaluated spec.
+     context?        native!       Returns the context to which a word is bound.
+     continue        native!       Throws control back to top of loop.
+     copy            action!       Returns a copy of a non-scalar value.
+     cos             function!     Returns the trigonometric cosine.
+     cosine          native!       Returns the trigonometric cosine.
+     count-chars     routine!      Count UTF-8 encoded characters between two positions in a binary series.
+     create          action!       Send port a create request.
+     create-dir      routine!      Create the given directory.
+     datatype?       function!     Returns true if the value is this type.
+     date?           function!     Returns true if the value is this type.
+     debase          native!       Decodes binary-coded string (BASE-64 default) to binary value.
+     debug           function!     Runs argument code through an interactive debugger.
+     debug-info?     function!     Internal use only.
+     decode-url      function!     Decode a URL into an object containing its constituent parts.
+     decompress      native!       Decompresses data.
+     deep-reactor    function!     [spec [block!]]
+     dehex           native!       Converts URL-style hex encoded (%xx) strings.
+     delete          action!       Deletes the specified file or empty folder.
+     difference      native!       Returns the special difference of two data sets.
+     dir             function!     Display a directory listing, for the current dir if none is given.
+     dir?            function!     Returns TRUE if the value looks like a directory spec.
+     dirize          function!     Returns a copy of the path turned into a directory.
+     distance?       function!     Returns the distance between 2 points or face centers.
+     divide          action!       Returns the quotient of two values.
+     do              native!       Evaluates a value, returning the last evaluation result.
+     do-actor        function!     Internal Use Only.
+     do-events       function!     Launch the event loop, blocks until all windows are closed.
+     do-file         function!     Internal Use Only.
+     do-no-sync      function!     Evaluate CODE with view/auto-sync?: off.
+     do-safe         function!     Internal Use Only.
+     do-thru         function!     Evaluates a remote Red script through local disk cache.
+     does            native!       Defines a function with no arguments or local variables.
+     draw            function!     Draws scalable vector graphics to an image.
+     dt              function!     Returns the time required to evaluate a block.
+     dump-face       function!     Display debugging info about a face and its children.
+     dump-reactions  function!     Outputs all the current reactive relations for debugging purpose.
+     either          native!       If conditional expression is truthy, evaluate the first branch; else evaluate the alternative.
+     ellipsize-at    function!     Truncate and add ellipsis if str is longer than len.
+     email?          function!     Returns true if the value is this type.
+     empty?          function!     Returns true if data is a series at its tail or an empty map.
+     enbase          native!       Encodes a string into a binary-coded string (BASE-64 default).
+     encode-url      function!     [url-obj [object!] "What you'd get from decode-url" /local result]
+     enhex           native!       Encode URL-style hex encoded (%xx) strings.
+     equal?          native!       Returns TRUE if two values are equal.
+     error?          function!     Returns true if the value is this type.
+     eval-set-path   function!     Internal Use Only.
+     even?           action!       Returns true if the number is evenly divisible by 2.
+     event?          routine!      Returns true if the value is this type.
+     exclude         native!       Returns the first data set less the second data set.
+     exists-thru?    function!     Returns true if the remote file is present in the local disk cache.
+     exists?         routine!      Returns TRUE if the file exists.
+     exit            native!       Exits a function, returning no value.
+     exp             native!       Raises E (the base of natural logarithm) to the power specified.
+     expand          function!     Preprocess the argument block and display the output (console only).
+     expand-directives function!     Invokes the preprocessor on argument list, modifying and returning it.
+     extend          native!       Extend an object or map value with list of key and value pairs.
+     extract         function!     Extracts a value from a series at regular intervals.
+     extract-boot-args function!     Process command-line arguments and store values in system/options (internal usage).
+     face?           function!     Returns TRUE if the value is a face! object.
+     fetch-help      function!     Returns information about functions, values, objects, and datatypes.
+     fifth           function!     Returns the fifth value in a series.
+     file?           function!     Returns true if the value is this type.
+     find            action!       Returns the series where a value is found, or NONE.
+     find-flag?      routine!      Checks a flag in a face object.
+     first           function!     Returns the first value in a series.
+     flip-exe-flag   function!     Flip the sub-system for the red.exe between console and GUI modes (Windows only).
+     float?          function!     Returns true if the value is this type.
+     forall          native!       Evaluates body for all values in a series.
+     foreach         native!       Evaluates body for each value in a series.
+     foreach-face    function!     Evaluates body for each face in a face tree matching the condition.
+     forever         native!       Evaluates body repeatedly forever.
+     form            action!       Returns a user-friendly string representation of a value.
+     fourth          function!     Returns the fourth value in a series.
+     frame-index?    routine!      [return: [integer!]]
+     func            native!       Defines a function with a given spec and body.
+     function        native!       Defines a function, making all set-words found in body, local.
+     function?       function!     Returns true if the value is this type.
+     get             native!       Returns the value a word refers to.
+     get-caret-blink-time routine!      [return: [integer!]]
+     get-current-dir routine!      Returns the platform's current directory for the process.
+     get-current-screen function!     Returns the screen face of the Display where the mouse cursor is currently located.
+     get-env         native!       Returns the value of an OS environment variable (for current process).
+     get-face-pane   function!     Returns the list of a container children or none.
+     get-focusable   function!     Returns the next focusable face from a face tree.
+     get-path?       function!     Returns true if the value is this type.
+     get-scroller    function!     return a scroller object from a face.
+     get-word?       function!     Returns true if the value is this type.
+     greater-or-equal? native!       Returns TRUE if the first value is greater than or equal to the second.
+     greater?        native!       Returns TRUE if the first value is greater than the second.
+     halt            function!     Stops evaluation and returns to the input prompt.
+     handle?         function!     Returns true if the value is this type.
+     has             native!       Defines a function with local variables, but no arguments.
+     hash?           function!     Returns true if the value is this type.
+     head            action!       Returns a series at its first index.
+     head?           action!       Returns true if a series is at its first index.
+     help            function!     Displays information about functions, values, objects, and datatypes.
+     help-string     function!     Returns information about functions, values, objects, and datatypes.
+     hex-to-rgb      function!     Converts a color in hex format to a tuple value; returns NONE if it fails.
+     if              native!       If conditional expression is truthy, evaluate block; else return NONE.
+     image?          function!     Returns true if the value is this type.
+     immediate?      function!     Returns true if the value is any type of immediate.
+     in              native!       Returns the given word bound to the object's context.
+     index?          action!       Returns the current index of series relative to the head, or of word in a context.
+     input           function!     Wait for console user input.
+     insert          action!       Inserts value(s) at series index; returns series past the insertion.
+     insert-event-func function!     Adds a function to monitor global events. Returns the function.
+     integer?        function!     Returns true if the value is this type.
+     intersect       native!       Returns the intersection of two data sets.
+     is              function!     []
+     issue?          function!     Returns true if the value is this type.
+     keys-of         function!     Returns the list of words of a value that supports reflection.
+     last            function!     Returns the last value in a series.
+     last-lf?        routine!      Internal Use Only.
+     last?           function!     Returns TRUE if the series length is 1.
+     layout          function!     [[no-trace] {Return a face with a pane built from a VID description} spec [block!] "Dialect block of styles, attributes, and layouts" /tight "Zero offset and origin" /options user-opts [block!] "Optional features in [name: value] format" /flags flgs [block! word!] "One or more window flags" /only "Returns only the pane block" /parent panel [object!] divides [integer! none!] /styles "Use an existing styles list" css [block!] "Styles list" /local axis anti background! list reactors local-styles pane-size direction align begin size max-sz current global? bel...
+     length?         action!       Returns the number of values in the series, from the current index to the tail.
+     lesser-or-equal? native!       Returns TRUE if the first value is less than or equal to the second.
+     lesser?         native!       Returns TRUE if the first value is less than the second.
+     link-sub-to-parent function!     Internal Use Only.
+     link-tabs-to-parent function!     Internal Use Only.
+     list-dir        function!     Displays a list of files and directories from given folder or current one.
+     list-env        native!       Returns a map of OS environment variables (for current process).
+     lit-path?       function!     Returns true if the value is this type.
+     lit-word?       function!     Returns true if the value is this type.
+     ll              function!     Display a single column directory listing, for the current dir if none is given.
+     load            function!     Returns a value or block of values by reading and evaluating a source.
+     load-csv        function!     Converts CSV text to a block of rows, where each row is a block of fields.
+     load-json       function!     Convert a JSON string to Red data.
+     load-thru       function!     Loads a remote file through local disk cache.
+     log-10          native!       Returns the base-10 logarithm.
+     log-2           native!       Return the base-2 logarithm.
+     log-e           native!       Returns the natural (base-E) logarithm of the given value.
+     logic?          function!     Returns true if the value is this type.
+     loop            native!       Evaluates body a number of times.
+     lowercase       native!       Converts string of characters to lowercase.
+     ls              function!     Display a directory listing, for the current dir if none is given.
+     make            action!       Returns a new value made from a spec for that value's type.
+     make-dir        function!     Creates the specified directory. No error if already exists.
+     make-face       function!     Make a face from a given style name or example face.
+     map?            function!     Returns true if the value is this type.
+     math            function!     Evaluates expression using math precedence rules.
+     max             native!       Returns the greater of the two values.
+     metrics?        function!     Returns a pair! value in the type metrics for the argument face.
+     min             native!       Returns the lesser of the two values.
+     mod             function!     Compute a nonnegative remainder of A divided by B.
+     modify          action!       Change mode for target aggregate value.
+     modulo          function!     Wrapper for MOD that handles errors like REMAINDER. Negligible values (compared to A and B) are rounded to zero.
+     mold            action!       Returns a source format string representation of a value.
+     money?          function!     Returns true if the value is this type.
+     move            action!       Moves one or more elements from one series to another position or series.
+     multiply        action!       Returns the product of two values.
+     NaN?            native!       Returns TRUE if the number is Not-a-Number.
+     native?         function!     Returns true if the value is this type.
+     negate          action!       Returns the opposite (additive inverse) value.
+     negative?       native!       Returns TRUE if the number is negative.
+     new-line        native!       Sets or clears the new-line marker within a list series.
+     new-line?       native!       Returns the state of the new-line marker within a list series.
+     next            action!       Returns a series at the next index.
+     no-react        function!     Evaluates a block with all previously defined reactions disabled.
+     none?           function!     Returns true if the value is this type.
+     normalize-dir   function!     Returns an absolute directory spec.
+     not             native!       Returns the logical complement of a value (truthy or falsy).
+     not-equal?      native!       Returns TRUE if two values are not equal.
+     now             native!       Returns date and time.
+     number?         function!     Returns true if the value is any type of number.
+     object          function!     Makes a new object from an evaluated spec.
+     object?         function!     Returns true if the value is this type.
+     odd?            action!       Returns true if the number has a remainder of 1 when divided by 2.
+     offset-to-caret function!     Given a coordinate, returns the corresponding caret position.
+     offset-to-char  function!     Given a coordinate, returns the corresponding character position.
+     offset?         function!     Returns the offset between two series positions.
+     on-face-deep-change* function!     Internal use only.
+     op?             function!     Returns true if the value is this type.
+     open            action!       Opens a port; makes a new port from a specification if necessary.
+     open?           action!       Returns TRUE if port is open.
+     or              op!           Returns the first value ORed with the second.
+     or~             action!       Returns the first value ORed with the second.
+     os-info         routine!      Returns detailed operating system version information.
+     overlap?        function!     Return TRUE if the two faces bounding boxes are overlapping.
+     pad             function!     Pad a FORMed value on right side with spaces.
+     pair?           function!     Returns true if the value is this type.
+     paren?          function!     Returns true if the value is this type.
+     parse           native!       Process a series using dialected grammar rules.
+     parse-trace     function!     Wrapper for parse/trace using the default event processor.
+     path-thru       function!     Returns the local disk cache path of a remote file.
+     path?           function!     Returns true if the value is this type.
+     percent?        function!     Returns true if the value is this type.
+     pick            action!       Returns the series value at a given index.
+     pick-stack      routine!      [idx [integer!]]
+     planar?         function!     Returns true if the value is any type of planar.
+     point2D?        function!     Returns true if the value is this type.
+     point3D?        function!     Returns true if the value is this type.
+     poke            action!       Replaces the series value at a given index, and returns the new value.
+     positive?       native!       Returns TRUE if the number is positive.
+     power           action!       Returns a number raised to a given power (exponent).
+     prin            native!       Outputs a value.
+     print           native!       Outputs a value followed by a newline.
+     probe           function!     Returns a value after printing its molded form.
+     profile         function!     Profile the argument code, counting calls and their cumulative duration, then print a report.
+     put             action!       Replaces the value following a key, and returns the new value.
+     pwd             function!     Displays the active directory path (Print Working Dir).
+     q               function!     Stops evaluation and exits the program.
+     query           action!       Returns information about a file.
+     quit            function!     Stops evaluation and exits the program.
+     quit-return     routine!      Stops evaluation and exits the program with a given status.
+     quote           function!     Return but don't evaluate the next value.
+     random          action!       Returns a random value of the same datatype; or shuffles series.
+     react           function!     Defines a new reactive relation between two or more objects.
+     react?          function!     Returns a reactive relation if an object's field is a reactive source.
+     reactor         function!     [spec [block!]]
+     read            action!       Reads from a file, URL, or other port.
+     read-clipboard  routine!      Return the contents of the system clipboard.
+     read-thru       function!     Reads a remote file through local disk cache.
+     recycle         native!       Recycles unused memory and returns memory amount still in use.
+     red-complete-input function!     [str [string!] console? [logic!] /local word ptr result sys-word delim? len insert? start end delimiters d w change?]
+     reduce          native!       Returns a copy of a block, evaluating all expressions.
+     ref?            function!     Returns true if the value is this type.
+     refinement?     function!     Returns true if the value is this type.
+     reflect         action!       Returns internal details about a value via reflection.
+     register-scheme function!     Registers a new scheme.
+     rejoin          function!     Reduces and joins a block of values.
+     relate          function!     Defines a reactive relation whose result is assigned to a word.
+     remainder       action!       Returns what is left over when one value is divided by another.
+     remove          action!       Returns the series at the same index after removing a value.
+     remove-each     native!       Removes values for each block that returns truthy value.
+     remove-event-func function!     Removes an event function previously added.
+     rename          action!       Rename a file.
+     repeat          native!       Evaluates body a number of times, tracking iteration count.
+     repend          function!     Appends a reduced value to a series and returns the series head.
+     replace         function!     Replaces values in a series, in place.
+     request-dir     function!     Asks user to select a directory and returns full directory path (or block of paths).
+     request-file    function!     Asks user to select a file and returns full file path (or block of paths).
+     request-font    function!     Requests a font object.
+     return          native!       Returns a value from a function.
+     reverse         action!       Reverses the order of elements; returns at same position.
+     round           action!       Returns the nearest integer. Halves round up (away from zero) by default.
+     routine         function!     Defines a function with a given Red spec and Red/System body.
+     routine?        function!     Returns true if the value is this type.
+     rtd-layout      function!     Returns a rich-text face from a RTD source code.
+     same?           native!       Returns TRUE if two values have the same identity.
+     save            function!     Saves a value, block, or other data to a file, URL, binary, or string.
+     scalar?         function!     Returns true if the value is any type of scalar.
+     scan            function!     Returns the guessed type of the first serialized value from the input.
+     second          function!     Returns the second value in a series.
+     select          action!       Find a value in a series and return the next value, or NONE.
+     send-event      function!     Sends a synthetic event! into the active GUI event loop.
+     send-event-os   routine!      [event [event!] queued? [logic!] return: [logic!]]
+     series?         function!     Returns true if the value is any type of series.
+     set             native!       Sets the value(s) one or more words refer to.
+     set-current-dir routine!      Sets the platform's current process directory.
+     set-env         native!       Sets the value of an operating system environment variable (for current process).
+     set-flag        function!     Sets (or clears) a flag in a face object; Returns the /flags facet value.
+     set-focus       function!     Sets the focus on the argument face.
+     set-path?       function!     Returns true if the value is this type.
+     set-quiet       routine!      Set an object's field to a value without triggering eventual object's events.
+     set-slot-quiet  routine!      Set a value in series without triggering eventual owner's events.
+     set-word?       function!     Returns true if the value is this type.
+     shift           native!       Perform a bit shift operation. Right shift (decreasing) by default.
+     shift-left      routine!      Shift bits to the left.
+     shift-logical   routine!      Shift bits to the right (unsigned).
+     shift-right     routine!      Shift bits to the right.
+     show            function!     Display a new face or update it.
+     show-memory-stats function!     [data [block!] /local class used total i c frm unit]
+     sign?           native!       Returns sign of N as 1, 0, or -1 (to use as a multiplier).
+     sin             function!     Returns the trigonometric sine.
+     sine            native!       Returns the trigonometric sine.
+     single?         function!     Returns TRUE if the series length is 1.
+     size-text       function!     Returns the area size of the text in a face.
+     size?           native!       Returns the size of a file content.
+     skip            action!       Returns the series relative to the current index.
+     sort            action!       Sorts a series (modified); default sort order is ascending.
+     source          function!     Print the source of a function.
+     spec-of         function!     Returns the spec of a value that supports reflection.
+     split           function!     Break a string series into pieces using the provided delimiters.
+     split-path      function!     [[no-trace] {Splits a file or URL path. Returns a block containing path and target} target [file! url!] /local dir pos]
+     sqrt            function!     Returns the square root of a number.
+     square-root     native!       Returns the square root of a number.
+     stack-size?     routine!      [return: [integer!]]
+     stats           native!       Returns interpreter statistics.
+     stop-events     function!     Stop the last opened event loop.
+     stop-reactor    function!     [face [object!] /deep /local list pos f]
+     strict-equal?   native!       Returns TRUE if two values are equal, and also the same datatype.
+     string?         function!     Returns true if the value is this type.
+     subtract        action!       Returns the difference between two values.
+     suffix?         function!     Returns the suffix (extension) of a filename or url, or NONE if there is no suffix.
+     sum             function!     Returns the sum of all values in a block.
+     swap            action!       Swaps elements between two series or the same series.
+     switch          native!       Evaluates the first block following the value found in cases.
+     tag?            function!     Returns true if the value is this type.
+     tail            action!       Returns a series at the index after its last value.
+     tail?           action!       Returns true if a series is past its last value.
+     take            action!       Removes and returns one or more elements.
+     tan             function!     Returns the trigonometric tangent.
+     tangent         native!       Returns the trigonometric tangent.
+     third           function!     Returns the third value in a series.
+     throw           native!       Throws control back to a previous catch.
+     time-it         function!     Returns the time required to evaluate a block.
+     time?           function!     Returns true if the value is this type.
+     to              action!       Converts to a specified datatype.
+     to-binary       function!     Convert to binary! value.
+     to-bitset       function!     Convert to bitset! value.
+     to-block        function!     Convert to block! value.
+     to-char         function!     Convert to char! value.
+     to-csv          function!     Make CSV data from input value.
+     to-date         function!     Convert to date! value.
+     to-email        function!     Convert to email! value.
+     to-file         function!     Convert to file! value.
+     to-float        function!     Convert to float! value.
+     to-get-path     function!     Convert to get-path! value.
+     to-get-word     function!     Convert to get-word! value.
+     to-hash         function!     Convert to hash! value.
+     to-hex          native!       Converts numeric value to a hex issue! datatype (with leading # and 0's).
+     to-image        function!     Convert to image! value.
+     to-integer      function!     Convert to integer! value.
+     to-issue        function!     Convert to issue! value.
+     to-json         function!     Convert Red data to a JSON string.
+     to-lit-path     function!     Convert to lit-path! value.
+     to-lit-word     function!     Convert to lit-word! value.
+     to-local-date   function!     Returns the date with local zone.
+     to-local-file   native!       Converts a Red file path to the local system file path.
+     to-logic        function!     Convert to logic! value.
+     to-map          function!     Convert to map! value.
+     to-money        function!     Convert to money! value.
+     to-none         function!     Convert to none! value.
+     to-pair         function!     Convert to pair! value.
+     to-paren        function!     Convert to paren! value.
+     to-path         function!     Convert to path! value.
+     to-percent      function!     Convert to percent! value.
+     to-point2D      function!     Convert to point2D! value.
+     to-point3D      function!     Convert to point3D! value.
+     to-red-file     function!     Converts a local system file path to a Red file path.
+     to-ref          function!     Convert to ref! value.
+     to-refinement   function!     Convert to refinement! value.
+     to-set-path     function!     Convert to set-path! value.
+     to-set-word     function!     Convert to set-word! value.
+     to-string       function!     Convert to string! value.
+     to-tag          function!     Convert to tag! value.
+     to-time         function!     Convert to time! value.
+     to-tuple        function!     Convert to tuple! value.
+     to-typeset      function!     Convert to typeset! value.
+     to-unset        function!     Convert to unset! value.
+     to-url          function!     Convert to url! value.
+     to-UTC-date     function!     Returns the date with UTC zone.
+     to-word         function!     Convert to word! value.
+     trace           function!     Runs argument code and prints an evaluation trace; also turns on/off tracing.
+     tracing?        routine!      []
+     transcode       native!       Translates UTF-8 binary source to values. Returns one or several values in a block.
+     transcode-trace function!     Shortcut function for transcoding while tracing all lexer events.
+     trim            action!       Removes space from a string or NONE from a block.
+     try             native!       Tries to DO a block and returns its value or an error.
+     tuple?          function!     Returns true if the value is this type.
+     type?           native!       Returns the datatype of a value.
+     typeset?        function!     Returns true if the value is this type.
+     union           native!       Returns the union of two data sets.
+     unique          native!       Returns the data set with duplicates removed.
+     unless          native!       If conditional expression is falsy, evaluate block; else return NONE.
+     unset           native!       Unsets the value of a word in its current context.
+     unset?          function!     Returns true if the value is this type.
+     until           native!       Evaluates body until it is truthy.
+     unview          function!     Close last opened window view.
+     update          action!       Updates external and internal states (normally after read/write).
+     update-font-faces function!     Internal Use Only.
+     uppercase       native!       Converts string of characters to uppercase.
+     url?            function!     Returns true if the value is this type.
+     value?          native!       Returns TRUE if the word has a value.
+     values-of       function!     Returns the list of values of a value that supports reflection.
+     vector?         function!     Returns true if the value is this type.
+     view            function!     Displays a window view from a layout block or from a window face.
+     wait            native!       Waits for a duration in seconds or specified time.
+     what            function!     Lists all functions, or search for values.
+     what-dir        function!     Returns the active directory path.
+     while           native!       Evaluates body as long as condition block evaluates to truthy value.
+     within?         function!     Return TRUE if the point is within the rectangle bounds.
+     word?           function!     Returns true if the value is this type.
+     words-of        function!     Returns the list of words of a value that supports reflection.
+     write           action!       Writes to a file, URL, or other port.
+     write-clipboard routine!      Write content to the system clipboard.
+     write-stdout    routine!      Write data to STDOUT.
+     xor             op!           Returns the first value exclusive ORed with the second.
+     xor~            action!       Returns the first value exclusive ORed with the second.
+     zero?           native!       Returns TRUE if the value is zero.
+     _save-cfg       function!     []
