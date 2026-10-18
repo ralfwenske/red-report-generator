@@ -231,9 +231,9 @@ Tokens are replaced **everywhere** (header, body/content, footer) by both render
 
 ```red
 [TOC [
-    ["<h1>"       [f2 px/300]     "<t-page>" [f2]]
-    ["    <h2>"   [f2 px/300]     "<t-page>" [f2]]
-    ["        <h3>" [s/12 px/300] "<t-page>" [s/12]]
+    ["<h1>"       [f2 px/300 link/toc]     "<t-page>" [f2]]
+    ["    <h2>"   [f2 px/300 link/toc]     "<t-page>" [f2]]
+    ["        <h3>" [s/12 px/300 link/toc] "<t-page>" [s/12]]
 ]]
 ```
 
@@ -242,6 +242,9 @@ Tokens are replaced **everywhere** (header, body/content, footer) by both render
 - A level is listed **only if a pattern line for it exists**. A pattern line with no
   placeholder is emitted literally (a caption).
 - `px/N` on the text segment keeps the filled-in page number from re-wrapping.
+- `link/toc` in a pattern style block makes each entry **clickable** (View only):
+  clicking jumps to the heading's page. It implies a link underline; add `!u` to
+  suppress it.
 
 ---
 

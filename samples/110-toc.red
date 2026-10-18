@@ -11,6 +11,8 @@ Red [
 ; pattern line naming a level supplies its format and indentation, so a level is
 ; listed exactly when a pattern line for it exists:
 ;   <h1>/<h2>/<h3>  the heading text            <t-page>  the page it is on
+; `link/toc` in a pattern style block makes each entry clickable (View only):
+; clicking jumps to the heading's page. Add `!u` to suppress the link underline.
 ; Pattern lines are ordinary value/style lines, so indentation (leading spaces)
 ; and px/N widths (to push the page number into a column) work as usual.
 
@@ -25,9 +27,9 @@ report: [
         ["Table of Contents" [f1]]
         []
         [TOC [
-            ["<h1>"       [f2 px/300]     "<t-page>" [f3]]
-            ["    <h2>"   [f3 px/300]     "<t-page>" [f3]]
-            ["            <h3>" [f4 px/300] "<t-page>" [f3]]
+            ["<h1>"       [f2 px/300 link/toc]     "<t-page>" [f3]]
+            ["    <h2>"   [f3 px/300 link/toc]     "<t-page>" [f3]]
+            ["            <h3>" [f4 px/300 link/toc] "<t-page>" [f3]]
         ]]
 
         [FOOTER [

@@ -795,17 +795,31 @@ report-styles: context [
     ]
 
     toc-subst-line: func [
-        "Clone a pattern line, substituting the heading text and page token."
-        pline [block!] text [string!] token [string!]
-        /local out p
+        {Clone a pattern line, substituting the heading text, page token and the
+         TOC link marker (`link/toc` -> `link/toc-N`, N = heading index).}
+        pline [block!] text [string!] token [string!] idx [integer!]
+        /local out p sty a newsty
     ][
         out: copy/deep pline
         foreach p out [
-            if all [block? p (length? p) >= 1 string? p/1][
-                p/1: replace/all p/1 "<h1>" text
-                p/1: replace/all p/1 "<h2>" text
-                p/1: replace/all p/1 "<h3>" text
-                p/1: replace/all p/1 "<t-page>" token
+            if all [block? p (length? p) >= 1][
+                if string? p/1 [
+                    p/1: replace/all p/1 "<h1>" text
+                    p/1: replace/all p/1 "<h2>" text
+                    p/1: replace/all p/1 "<h3>" text
+                    p/1: replace/all p/1 "<t-page>" token
+                ]
+                if all [(length? p) >= 2 block? p/2][
+                    sty: p/2  newsty: copy []
+                    foreach a sty [
+                        append newsty either a = 'link-toc [
+                            to word! rejoin ["link-toc-" idx]
+                        ][
+                            a
+                        ]
+                    ]
+                    p/2: newsty
+                ]
             ]
         ]
         out
@@ -839,7 +853,7 @@ report-styles: context [
             idx: idx + 1
             foreach pe pats [
                 if pe/1 = h/1 [
-                    append/only out toc-subst-line pe/2 h/2 (toc-page-token idx)
+                    append/only out toc-subst-line pe/2 h/2 (toc-page-token idx) idx
                     break
                 ]
             ]

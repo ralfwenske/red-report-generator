@@ -21,20 +21,21 @@ functions: either exists? %../assets/what-functions.txt [load %../assets/what-fu
 
 whats: func [] [
     res: []
-    foreach item functions [ ; action!  function! ...
+    foreach chapter functions [ ; action!  function! ...
         what-string: copy []
-        append/only what-string         ;replace header to show (w/1)
-            compose/deep [HEADER [
-                ["Red Report Generator" [h1] "" (now/date) ]
-                [(rejoin ["Type: " (uppercase item/1)]) [h3 red] "" (now) [datetime]]
-                []
-            ]]
+        ;append/only what-string         ;replace header to show (w/1)
+        ;    compose/deep [HEADER [
+        ;        ["Red Report Generator" [f1] "" (now/date) ]
+        ;        [(rejoin ["Type: " (uppercase chapter/1)]) [f3 red] "" (now) [datetime]]
+        ;        []
+        ;    ]]
         append/only what-string         ;replace footer to show (w/1)
             compose/deep [FOOTER [
-                [(uppercase item/1) "" "<page> of <pages>" ]                        ; on page 2,3...
+                [(uppercase chapter/1) [red] "" "<page> of <pages>" ]                        ; on page 2,3...
             ]]
-        append/only what-string [PAGEBREAK] ;force new page for new (item/1)
-        foreach wf item/2 [
+        append/only what-string [PAGEBREAK] ;force new page for new (chapter/1)
+        append/only what-string compose/deep [[(uppercase chapter/1)] [h2 red]]
+        foreach wf chapter/2 [
             append/only what-string compose/deep [[m/10 ] (wf/1) [px/170] (wf/2) [s/7 ]]
         ]
         append res what-string
@@ -49,15 +50,23 @@ report: compose/deep [ margin/10
         []
     ][
         ["Header Test" [h2] "" "This is a header for page 2 and after"] ; on page 2,3...
+        []
     ]]
     [BODY [    
-        [[h3] "demonstrating HEADER FOOTER dynamics"]
+        [[f3] "demonstrating HEADER FOOTER dynamics"]
         ["the loaded block generates all content of this report"]
         []
         [{;    assets/what-functions.txt returns this block structure:
             [  ["action!"   [ ["absolute" "Returns the non-negative value."     ] ]
                ["function!" [ ["pair?" "Returns true if the value is this type."] ] ]
-        }]
+        }]        
+        []
+        ["Table of Contents" [f1]]
+        []
+        [TOC [
+            ["<h2>"       [s px/300 link/toc]     "<t-page>" [s]]
+            []
+        ]]
         (whats)
     ]]
     [FOOTER [

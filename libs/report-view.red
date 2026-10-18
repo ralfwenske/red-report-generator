@@ -1784,11 +1784,11 @@ report-view: make report-styles [
         /local current-page current-img fit-width? scroll-y toolbar-h
                popup-handler hovered-hs hint-active hint-start
                sv-page-width sv-page-height sv-page-hotspots
-               screen-to-page hit-test ensure-img scale-view update-buttons showpage
+               screen-to-page hit-test toc-target ensure-img scale-view update-buttons showpage
                display-title
                win btn-first btn-prev btn-next btn-last page-label fit-cb
                clip-f img-f p parentsize vp-w vp-h iw ih
-               max-scroll delta page-pos new-hs hs pn
+               max-scroll delta page-pos new-hs hs pn target
                zoom-pct last-pn last-zoom last-img pw ph ratio
     ][
         current-page: 1
@@ -1840,6 +1840,20 @@ report-view: make report-styles [
                     return hotspot
                 ]
             ]
+            none
+        ]
+
+        ; TOC entries carry link id `toc-N` (N = heading index). Resolve it to the
+        ; page recorded for that heading; the viewer then jumps there.
+        toc-target: func [id [any-type!] /local s n pg][
+            unless word? id [return none]
+            s: form id
+            unless all [(length? s) > 4  (copy/part s 4) = "toc-"][return none]
+            n: attempt [to integer! copy/part skip s 4 ((length? s) - 4)]
+            if not n [return none]
+            unless block? toc-pages [return none]
+            pg: pick toc-pages n
+            if all [pg  pg >= 1  pg <= length? page-draws][return pg]
             none
         ]
 
@@ -1994,11 +2008,18 @@ report-view: make report-styles [
                         ]
                     ]
                     on-down [
-                        if :popup-handler [
-                            page-pos: screen-to-page event/offset/x event/offset/y
-                            hs: hit-test page-pos
-                            if all [hs hs/link-id][
-                                popup-handler 'link hs/link-id hs/text
+                        page-pos: screen-to-page event/offset/x event/offset/y
+                        hs: hit-test page-pos
+                        if all [hs hs/link-id][
+                            target: toc-target hs/link-id
+                            either target [
+                                current-page: target
+                                scroll-y: 0
+                                showpage
+                            ][
+                                if :popup-handler [
+                                    popup-handler 'link hs/link-id hs/text
+                                ]
                             ]
                         ]
                     ]

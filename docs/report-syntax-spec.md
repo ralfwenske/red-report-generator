@@ -569,6 +569,10 @@ no depth argument):
   (leading spaces) each pattern supplies. A level with no pattern line is omitted.
 - `<t-page>` becomes that heading's page number; `<hN>` becomes its text (the first
   value of the heading line).
+- Put `link/toc` in a pattern line's style block to make each entry **clickable**:
+  it expands to a per-entry link id (`toc-N`) whose target is the heading's page, and
+  clicking it in the viewer jumps to that page (View only — PDF drops links). Like any
+  link it implies a solid underline; add `!u` to suppress that.
 - A pattern line with no placeholder is emitted literally, first (a caption such as
   `["CONTENTS" [f2]]`).
 - Pattern lines are ordinary value/style lines, so `px/N` widths push the page number
