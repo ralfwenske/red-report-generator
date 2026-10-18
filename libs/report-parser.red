@@ -460,7 +460,7 @@ parse-section: func [
         case [
             tuple? s [true]
             issue? s [true]          ; px/N / ch/N
-            number? s [true]         ; integer width or float number-format
+            float? s [true]          ; number format (width.decimals)
             word? s [
                 any [
                     find report-styles/style-words s
@@ -529,6 +529,9 @@ parse-section: func [
                     return rejoin [sec-name " line " i ": value '" mold pair/1 "' is a bare word; write it as a string (" form pair/1 ") or a paren like (" form pair/1 ") to compute it"]
                 ]
                 foreach s pair/2 [
+                    if integer? s [
+                        return rejoin [sec-name " line " i ": bare width " mold s " is ambiguous; use ch/N or px/N"]
+                    ]
                     unless style-word-ok? s [
                         return rejoin [sec-name " line " i ": unknown style word '" mold s "'" style-hint s]
                     ]
@@ -539,9 +542,9 @@ parse-section: func [
     ]
 
     ;=== Item argument schema ==================================================
-    ; One declarative table per keyword: the kinds of argument it accepts
-    ; (order-significant for same-kind atoms — e.g. COLUMN (width gap)) and the
-    ; item heads its trailing block may contain. `validate-report` uses it, and
+    ; One declarative table per keyword: the kinds of argument it accepts.
+    ; Arguments are matched by type, not position (see IMAGE/COLUMN); widths are
+    ; always spelled with a unit (px/N or ch/N). `validate-report` uses it, and
     ; the parser uses `collect-args` to derive each item's styles. The renderers
     ; keep consuming the object structure `parse-section` builds.
 
@@ -549,8 +552,8 @@ parse-section: func [
     ; `arg-kind`/`collect-args` implement the per-keyword rules. Child keywords
     ; are enforced for section items.
     item-schema: [
-        header    [[style]              [table image column pagebreak]]
-        footer    [[style]              [table image column pagebreak]]
+        header    [[style]              []]
+        footer    [[style]              []]
         body      [[style]              [table image column pagebreak draw frame header footer toc]]
         table     [[modifier style]     []]
         column    [[width width style]  [image pagebreak]]
@@ -563,12 +566,12 @@ parse-section: func [
     ]
 
     width-atom?: func [
-        "Width argument: a number, px/N or ch/N style, legacy px/N/ch/N, or 'auto"
+        "Width argument: px/N or ch/N (issue or normalized word) or 'auto. Bare numbers are rejected (ambiguous)."
         a [any-type!]
         /local ss
     ][
         case [
-            any [number? a issue? a][true]
+            issue? a [true]
             all [word? a  ss: report-styles/size-suffix a  find [px ch] ss/1][true]
             all [word? a  a = 'auto][true]
             true [false]
@@ -578,6 +581,7 @@ parse-section: func [
     arg-kind: func [
         "Kind of one argument for a keyword: style|width|file|modifier|integer|none"
         kw [word!] a [any-type!]
+        /local ss
     ][
         case [
             find [draw draw-bg frame pagebreak] kw [
@@ -585,13 +589,15 @@ parse-section: func [
             ]
             kw = 'image [
                 case [
-                    any [file? a string? a] ['file]
+                    any [file? a string? a image? a] ['file]
                     all [width-atom? a  a <> 'auto]['width]
                     true [none]
                 ]
             ]
             kw = 'column [
                 case [
+                    all [word? a  ss: report-styles/size-suffix a
+                         find [gap-ch gap-px] ss/1]['modifier]
                     width-atom? a ['width]
                     style-word-ok? a ['style]
                     true [none]
@@ -636,10 +642,16 @@ parse-section: func [
                 k = 'modifier [append st/modifiers a]
                 k = 'integer  [append st/integers a]
                 true [
-                    st/problem: either find [header footer body toc] kw [
-                        rejoin ["unknown style word '" mold a "'" style-hint a]
-                    ][
-                        rejoin ["unexpected argument " mold a " for " uppercase form kw]
+                    st/problem: case [
+                        all [number? a  find [column] kw] [
+                            rejoin ["bare width " mold a " is ambiguous; use ch/N or px/N"]
+                        ]
+                        find [header footer body toc] kw [
+                            rejoin ["unknown style word '" mold a "'" style-hint a]
+                        ]
+                        true [
+                            rejoin ["unexpected argument " mold a " for " uppercase form kw]
+                        ]
                     ]
                     return st
                 ]
@@ -647,8 +659,11 @@ parse-section: func [
         ]
         case [
             kw = 'column [
-                if (length? st/widths) > 2 [
-                    st/problem: rejoin ["COLUMN takes at most (width gap), got " mold st/widths]
+                if (length? st/widths) > 1 [
+                    st/problem: rejoin ["COLUMN takes at most one width, got " mold st/widths]
+                ]
+                if (length? st/modifiers) > 1 [
+                    st/problem: rejoin ["COLUMN takes at most one gap (gap-ch/N or gap-px/N), got " mold st/modifiers]
                 ]
             ]
             kw = 'image [
@@ -681,8 +696,14 @@ parse-section: func [
     schema-args-problem: func [
         "Validate a keyword's arguments against its schema; a message or none"
         kw [word!] args [block!]
-        /local st
+        /local st ia
     ][
+        ; IMAGE has an ordered grammar (width? box clause? source) rather than the
+        ; generic kind buckets, so parse it directly.
+        if kw = 'image [
+            ia: report-styles/parse-image-args args
+            return ia/6
+        ]
         st: collect-args kw args
         st/problem
     ]
@@ -756,11 +777,59 @@ parse-section: func [
         none
     ]
 
+    legacy-dash-problem: func [
+        {First legacy `base-N` word or `#Npx/#Nch` issue in the raw page, or none.
+         Paths (`base/N`) are the canonical form.}
+        blk [block!]
+        /local v f p n base u
+    ][
+        foreach v blk [
+            case [
+                block? v [
+                    if msg: legacy-dash-problem v [return msg]
+                ]
+                word? v [
+                    f: form v
+                    p: find/last f "-"
+                    if p [
+                        n: copy skip p 1
+                        if all [not empty? n  attempt [to integer! n]][
+                            base: to word! copy/part f p
+                            if any [
+                                find report-styles/style-words base
+                                find [px ch gap-ch gap-px link hint
+                                      margin top bottom left right] base
+                            ][
+                                return rejoin [
+                                    "legacy '-N' notation " mold v " — write " base "/" n
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+                issue? v [
+                    f: form v
+                    if (length? f) > 2 [
+                        u: copy/part skip tail f -2 2
+                        n: copy/part f ((length? f) - 2)
+                        if all [find ["px" "ch"] u  attempt [to integer! n]][
+                            return rejoin ["legacy issue width " mold v " — write " u "/" n]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        none
+    ]
+
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a bg parsed w sch2 x2 k l2 j cap-line wl
+        /local err pg msg ln i row a bg parsed w sch2 x2 k l2 j cap-line wl dash
     ][
+        ;--- Legacy dash notation is rejected: use paths (ss/8, px/80, margin/10) ---
+        dash: legacy-dash-problem page
+        if dash [return dash]
         ;--- Cheap structural pre-check (catches unknown keywords/directives) ---
         msg: page-problem page
         if msg [return msg]

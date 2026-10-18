@@ -26,7 +26,7 @@ foreach pattern ["HEAD-ER" "BO-DY" "FOO-TER" ][
     script-string: attach-style script-string p [red b]
 ]
 
-report: compose/deep [ margin-5
+report: compose/deep [ margin/5
     [HEADER [
         ["Red Report Generator" [f1] "" (now/date) ]
         [(script) "***" (now) [datetime]]

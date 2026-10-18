@@ -35,7 +35,7 @@ foreach line code [
 ]
 
 report: compose/deep [
-    margin-10 ;920x900 ;a4 landscape
+    margin/10 ;920x900 ;a4 landscape
     [HEADER [
         ["Red Report" [f1 !m red] "Self Reflection" [f2]]
         ["Prepared <now>" [i] "" "<page> of <pages>" [b]]
@@ -47,14 +47,14 @@ report: compose/deep [
         ]
         []
         ;[COLUMN px/280 0 (bdy)]
-        [COLUMN auto 0 (bdy)]
+        [COLUMN auto gap-ch/0 (bdy)]
         []
-        ["  ABOUT  " [f2 link-123]]
+        ["  ABOUT  " [f2 link/123]]
         [ 
             "On next page the " 
             "  PDF Report  " [f2 100.100.100 yellow !m]
         ]
-        [IMAGE 800 %code-viewer.png]
+        [IMAGE px/800 %code-viewer.png]
     ]]
     [FOOTER [
         [(now/date) [i]]
@@ -64,7 +64,7 @@ report: compose/deep [
 do-popup: function [
     type [lit-word! word!] id [number!] txt [string!]
 ][
-    rpt: compose/deep [margin-5 [BODY 
+    rpt: compose/deep [margin/5 [BODY 
         [[
             (rejoin [type " " id ": "]) 
             (txt) [!m f2 b red black red] 

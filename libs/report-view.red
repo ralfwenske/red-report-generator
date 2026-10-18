@@ -428,13 +428,13 @@ report-view: make report-styles [
     ]
 
     draw-image-func: func [
-        "Append image to page-draw"
-        x [integer!] y [integer!] display-w [integer!] display-h [integer!] file [file!]
+        "Append image to page-draw (source: file! or image!)"
+        x [integer!] y [integer!] display-w [integer!] display-h [integer!] src [file! image!]
         /local img dy
     ][
-        img: attempt [load file]
+        img: either image? src [src][attempt [load src]]
         unless img [
-            print rejoin ["Warning: cannot load image " file]
+            print rejoin ["Warning: cannot load image " src]
             return false
         ]
         dy: to-draw-y y
@@ -1105,19 +1105,28 @@ report-view: make report-styles [
     _emit-image: func [
         "Render image object from content"
         line [object!]
-        /local ia img-file img-obj aspect avail-h avail-w base-w w
+        /local ia img-src img-obj aspect avail-h avail-w base-w w
                ge base-color img-cap img-w img-h bw bh bx by ix iy block-h cap-h cap-info cap-styles
-               decl-w left-a right-a top-a bot-a avail-full cap-line
+               decl-w left-a right-a top-a bot-a avail-full cap-line inset shadow?
     ][
         ia: parse-image-args line/args
         if all [not empty? ia ia/2][
-            img-file: ia/2
-            img-obj: attempt [load img-file]
+            img-src: ia/2
+            img-obj: either image? img-src [img-src][attempt [load img-src]]
             either img-obj [
                 cap-info: image-caption-info build-image-caption line none
                 base-color: cap-info/2
                 img-cap: cap-info/1
                 cap-styles: cap-info/5
+                either ia/3 [                       ; box args after IMAGE (canonical)
+                    base-color: any [ia/5 get 'silver]
+                    inset: ia/4
+                    shadow?: ia/3 = 'shadow
+                ][                                   ; legacy: box in the caption style block
+                    base-color: cap-info/2
+                    inset: cap-info/3
+                    shadow?: cap-info/4
+                ]
                 decl-w: image-declared-width ia cap-info
                 aspect: to float! img-obj/size/y / img-obj/size/x
                 cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
@@ -1136,7 +1145,7 @@ report-view: make report-styles [
                     if (to integer! (w * aspect)) > avail-h [w: max 1 (to integer! (avail-h / aspect))]
                     w
                 ]
-                ge: image-geometry reduce [base-color cap-info/3 cap-info/4] base-w aspect avail-h
+                ge: image-geometry reduce [base-color inset shadow?] base-w aspect avail-h
                 block-h: ge/9
                 ; if it does not fit this page, start a fresh page and re-size to its post-header area
                 if (page-y - block-h - line-height - cap-h) < page-bottom [
@@ -1149,7 +1158,7 @@ report-view: make report-styles [
                         if (to integer! (w * aspect)) > avail-h [w: max 1 (to integer! (avail-h / aspect))]
                         w
                     ]
-                    ge: image-geometry reduce [base-color cap-info/3 cap-info/4] base-w aspect avail-h
+                    ge: image-geometry reduce [base-color inset shadow?] base-w aspect avail-h
                     block-h: ge/9
                 ]
                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
@@ -1161,7 +1170,7 @@ report-view: make report-styles [
                              (as-pair (margin-left + bx + bw) (to-draw-y (page-y + by - bh)))
                     ]
                 ]
-                draw-image-func (margin-left + ix) (page-y + iy) img-w img-h img-file
+                draw-image-func (margin-left + ix) (page-y + iy) img-w img-h img-src
                 if img-cap [
                     draw-styled-text margin-left (page-y - block-h - cap-h) img-cap bw "C" cap-styles
                 ]
@@ -1183,7 +1192,7 @@ report-view: make report-styles [
                 ]
                 page-y: page-y - block-h - line-height - cap-h
             ][
-                print rejoin ["Warning: unsupported or unreadable image: " img-file]
+                print rejoin ["Warning: unsupported or unreadable image: " img-src]
             ]
         ]
     ]
@@ -1203,18 +1212,26 @@ report-view: make report-styles [
     _emit-column-image: func [
         "Render an image row inside a column; returns the (uniform) row height consumed"
         x [integer!] y [integer!] row [object!] col-w [integer!] col-styles [block! none!] col-img-w [issue! none!] img-row-h [integer!]
-        /local ia img-file img-obj ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles
-               left-a right-a top-a bot-a ch cw asp
+        /local ia img-src img-obj ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles
+               left-a right-a top-a bot-a ch cw asp inset shadow?
     ][
         ia: parse-image-args row/args
         either all [not empty? ia ia/2][
-            img-file: ia/2
-            img-obj: attempt [load img-file]
+            img-src: ia/2
+            img-obj: either image? img-src [img-src][attempt [load img-src]]
             either img-obj [
                 ci: image-caption-info build-image-caption row col-styles
-                base-color: ci/2
                 img-cap: ci/1
                 cap-styles: ci/5
+                either ia/3 [
+                    base-color: any [ia/5 get 'silver]
+                    inset: ia/4
+                    shadow?: ia/3 = 'shadow
+                ][
+                    base-color: ci/2
+                    inset: ci/3
+                    shadow?: ci/4
+                ]
                 cap-h: either img-cap [line-height][0]
                 asp: to float! img-obj/size/y / img-obj/size/x
                 ; the image fits the column's default width, else is contained to the column cell
@@ -1225,7 +1242,7 @@ report-view: make report-styles [
                     if (to integer! (cw * asp)) > ch [cw: max 1 (to integer! (ch / asp))]
                     cw
                 ]
-                ge: image-geometry reduce [base-color ci/3 ci/4] (min base-w col-w) asp ch
+                ge: image-geometry reduce [base-color inset shadow?] (min base-w col-w) asp ch
                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
                 bx: ge/5  by: ge/6  ix: ge/7  iy: ge/8  block-h: ge/9
                 if base-color [
@@ -1235,7 +1252,7 @@ report-view: make report-styles [
                              (as-pair (x + bx + bw) (to-draw-y (y + by - bh)))
                     ]
                 ]
-                draw-image-func (x + ix) (y + iy) img-w img-h img-file
+                draw-image-func (x + ix) (y + iy) img-w img-h img-src
                 if img-cap [draw-styled-text x (y - block-h - line-height) img-cap bw "C" cap-styles]
                 ; make the whole image area a link/hint hotspot (adjusted by _emit-column afterwards)
                 if any [ci/6 ci/7] [
@@ -1255,7 +1272,7 @@ report-view: make report-styles [
                 ]
                 img-row-h
             ][
-                print rejoin ["Warning: unsupported or unreadable image: " img-file]
+                print rejoin ["Warning: unsupported or unreadable image: " img-src]
                 img-row-h
             ]
         ][
@@ -1269,7 +1286,7 @@ report-view: make report-styles [
         /local col-args col-rows col-col-w col-gap col-total col-num col-idx col-remaining
                col-rows-per-col col-avail col-cols-fit col-rendered col-ci col-ri col-r
                col-emit-y col-offset col-draw saved-pd hs-before hs-after hs-i hs
-               row used-h col-max-h ri rr end overflow? col-styles col-img-styles col-img-w col-img-row-h width-spec gap-spec pos
+               row used-h col-max-h ri rr end overflow? col-styles col-img-styles col-img-w col-img-row-h width-spec gap-kind gap-n gs
                col-avail-w fit-w tol lm srows
     ][
         col-args: line/args
@@ -1279,19 +1296,20 @@ report-view: make report-styles [
         ; the column's default image width (from the "image [styles]" clause), or none
         col-img-w: report-styles/image-width col-img-styles
 
-        ; args: [width] [gap] then optional column styles (m s b u i h1 h2 h3 ...)
-        ; width: bare number = ch units, px/N / ch/N explicit, 'auto = auto-measure
-        ; gap:   bare number = ch units, px/N / ch/N explicit, default 1ch
+        ; args (matched by type, order-free): one width (px/N, ch/N or auto), one
+        ; gap (gap-ch/N or gap-px/N), and optional column styles (m s b u i h1 ...).
         col-styles: copy []
         width-spec: 'auto
-        gap-spec: none
-        pos: 0
+        gap-kind: none
+        gap-n: none
         foreach a col-args [
-            either width-arg? a [
-                pos: pos + 1
-                either pos = 1 [width-spec: a][either pos = 2 [gap-spec: a][]]
-            ][
-                append col-styles a
+            case [
+                all [word? a  gs: report-styles/size-suffix a  find [gap-ch gap-px] gs/1][
+                    gap-kind: gs/1
+                    gap-n: gs/2
+                ]
+                width-arg? a [width-spec: a]
+                true [append col-styles a]
             ]
         ]
         either width-spec = 'auto [
@@ -1310,8 +1328,12 @@ report-view: make report-styles [
         ][
             col-col-w: col-width-px width-spec col-styles
         ]
-        either all [width-arg? gap-spec  gap-spec <> 'auto][
-            col-gap: col-width-px gap-spec col-styles
+        either gap-kind [
+            col-gap: either gap-kind = 'gap-ch [
+                to integer! (gap-n * col-char-width col-styles)
+            ][
+                gap-n
+            ]
         ][
             col-gap: col-char-width col-styles
         ]

@@ -44,7 +44,7 @@ report: [
         ["DRAW-BG demo" [f2]]
         ["The blue band, the left spine and the frame are one raw draw block."]
         ["It is painted once, on every page, behind the header and body text."]
-        [IMAGE 400 %../assets/Red_Language_Tower_Logo.png ]
+        [IMAGE px/400 %../assets/Red_Language_Tower_Logo.png ]
         [pagebreak]
         ["Second page" [f2]]
         ["The same background appears again: DRAW-BG applies to all pages."]

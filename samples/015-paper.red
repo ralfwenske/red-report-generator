@@ -13,7 +13,7 @@ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVW
 }
 
 report: compose/deep [
-    margin-20
+    margin/20
     [HEADER [
         ["ACME Corp" [f1 red] "Quarterly Report" [f2]]
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]

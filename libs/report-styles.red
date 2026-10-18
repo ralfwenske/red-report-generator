@@ -524,15 +524,14 @@ report-styles: context [
     ]
 
     style-chars: func [
-        {Character count for a width box from a bare integer, a ch/N style (or the legacy
-         ch/N tag), or the width part of a float (w.d -> w); or 0. The fraction of a
-         float stays the decimal count.}
+        {Character count for a width box from a ch/N style (or legacy ch/N tag), or the
+         width part of a float (w.d -> w); or 0. Bare integers are ambiguous and rejected
+         by validation — use ch/N or px/N.}
         styles [block!]
         /local s u f dpos n ss
     ][
         foreach s styles [
             case [
-                integer? s [if s > 0 [return s]]
                 float? s [
                     f: form s
                     dpos: find f #"."
@@ -618,7 +617,7 @@ report-styles: context [
         /local f p n i
     ][
         f: form w
-        p: find f "-"
+        p: find/last f "-"
         if none? p [return none]
         n: copy skip p 1
         if empty? n [return none]
@@ -649,13 +648,14 @@ report-styles: context [
     ]
 
     width-arg?: func [
-        {True for a COLUMN width/gap argument: a number, 'auto, or px/N / ch/N —
-         as a literal issue (px/80) or the normalized word (px-80).}
+        {True for a width argument: 'auto, px/N or ch/N — as a literal issue
+         (px/80) or the normalized word (px-80). Bare numbers are ambiguous and
+         rejected; use px/N or ch/N.}
         a [any-type!]
         /local ss
     ][
         case [
-            any [number? a issue? a][true]
+            issue? a [true]
             a = 'auto [true]
             all [word? a  ss: size-suffix a  find [px ch] ss/1][true]
             true [false]
@@ -1093,6 +1093,8 @@ report-styles: context [
                     s = 's1000   [cur-format: 's1000]
                     integer? s  [cur-width: to integer! s * font-size * 0.5]
                     float? s    [cur-format: s]
+                    all [word? s  ss: size-suffix s  ss/1 = 'ch][cur-width: to integer! (ss/2 * font-size * 0.5)]
+                    all [word? s  ss: size-suffix s  ss/1 = 'px][cur-width: ss/2]
                     issue? s    [cur-width: width-to-px s 'ch]
                 ]
             ]
@@ -1771,20 +1773,22 @@ report-styles: context [
     ;=== IMAGE extras (base color, inset, shadow, caption) ===
 
     image-caption-info: func [
-        {Parse an IMAGE caption line [value [styles]] with the CLI-style grammar:
-         optional width issue (px/N/ch/N), optional leading 'shadow or 'border, optional
-         inset (integer), optional first color = the shadow/border color (default silver when a
-         box is present and no color follows), then the caption text styles (b i u m s h1-h3,
-         link/N/hint/N, !X) and the trailing 1-3 colors = the caption font/background/frame.
-         Returns [caption color inset shadow? cap-styles link-id hint-id width]; 'color' is the
-         box/base color for the shadow/border geometry, 'shadow?' true for a drop shadow.}
+        {Parse an IMAGE caption line [value [styles]].
+         Canonical form: the box clause lives in the IMAGE args (parse-image-args), so
+         `styles` here is pure text styles: (b i u m s ..., h1-h3/f1-f4, size/N,
+         link/N/hint/N, !X) plus the trailing 1-3 colours = caption font/background/frame.
+         Legacy form (still accepted): a leading `shadow`/`border`, optional inset and box
+         colour at the start of this block.
+         Returns [caption color inset shadow? cap-styles link-id hint-id width]; the box
+         fields are only meaningful in the legacy form.}
         line [block! none!]
-        /local caption styles color inset shadow? cap-styles kinds text-styles colors val lid hid sid s rest pair width iss2
+        /local caption styles color inset shadow? has-box? ss cap-styles kinds text-styles colors val lid hid sid s rest pair width iss2
     ][
         caption: none
         color: none
         inset: none
         shadow?: false
+        has-box?: false
         cap-styles: copy []
         lid: none
         hid: none
@@ -1804,21 +1808,33 @@ report-styles: context [
                     append rest s
                 ]
             ]
-            ; optional box word: 'shadow (drop shadow) or 'border (frame around the image)
-            if all [not empty? rest word? rest/1 find [shadow border] rest/1][
-                shadow?: rest/1 = 'shadow
-                rest: next rest
-                ; optional inset (box width)
-                if all [not empty? rest integer? rest/1][
-                    inset: rest/1
+            ; optional box clause: `border/N` / `shadow/N` (canonical; the /N is the
+            ; inset) or the legacy `shadow|border [integer] [colour]` form.
+            if all [not empty? rest  word? rest/1][
+                either all [ss: size-suffix rest/1  find [shadow border] ss/1][
+                    has-box?: true
+                    shadow?: ss/1 = 'shadow
+                    inset: ss/2
                     rest: next rest
+                ][
+                    if find [shadow border] rest/1 [
+                        has-box?: true
+                        shadow?: rest/1 = 'shadow
+                        rest: next rest
+                        if all [not empty? rest  integer? rest/1][
+                            inset: rest/1
+                            rest: next rest
+                        ]
+                    ]
                 ]
-                ; optional box color (the first color is eaten; default silver)
-                if all [not empty? rest any [tuple? rest/1 all [word? rest/1 tuple? attempt [get rest/1]]]][
-                    color: either tuple? rest/1 [rest/1][get rest/1]
-                    rest: next rest
+                ; optional box colour (the first colour after the box word; default silver)
+                if has-box? [
+                    if all [not empty? rest  any [tuple? rest/1  all [word? rest/1  tuple? attempt [get rest/1]]]][
+                        color: either tuple? rest/1 [rest/1][get rest/1]
+                        rest: next rest
+                    ]
+                    if none? color [color: get 'silver]
                 ]
-                if none? color [color: get 'silver]
             ]
             ; remaining = caption text styles + trailing caption colors
             kinds: style-split rest
@@ -1839,18 +1855,67 @@ report-styles: context [
     ]
 
     parse-image-args: func [
-        "Extract [width-or-none file] from an IMAGE item's args ([width file] or [file])."
+        {Parse an IMAGE item's args. Arguments are matched by *type*, not position:
+         at most one width, one box modifier (shadow|border, optional /N inset),
+         one box colour, and one source (file/string/image). Returns
+         [width source box-kind inset box-colour problem]; problem is a message or none.
+         A modifier carries its optional value in a /N suffix (`border/2`, `shadow/5`),
+         so a bare integer is always the image width and argument order is irrelevant.
+         The caption's style block stays purely text styles/colours.}
         args [block!]
-        /local w f
+        /local w src box inset color problem a ss
     ][
-        if empty? args [return reduce [none none]]
-        either any [file? args/1 string? args/1][
-            reduce [none to file! args/1]
-        ][
-            w: args/1
-            f: either (length? args) >= 2 [to file! args/2][none]
-            reduce [w f]
+        w: none src: none box: none inset: none color: none problem: none
+        foreach a args [
+            case [
+                any [file? a string? a image? a] [
+                    either src [
+                        problem: "IMAGE takes one source (file, path or image)"
+                    ][
+                        src: either image? a [a][to file! a]
+                    ]
+                ]
+                all [word? a  ss: size-suffix a  find [shadow border] ss/1] [
+                    either box [
+                        problem: "IMAGE takes at most one of shadow/border"
+                    ][
+                        box: ss/1  inset: ss/2
+                    ]
+                ]
+                all [word? a  find [shadow border] a] [
+                    either box [
+                        problem: "IMAGE takes at most one of shadow/border"
+                    ][
+                        box: a
+                    ]
+                ]
+                all [width-arg? a  a <> 'auto] [
+                    either w [
+                        problem: rejoin ["IMAGE takes at most one width, got " mold w " and " mold a]
+                    ][
+                        w: a
+                    ]
+                ]
+                number? a [
+                    problem: rejoin ["bare width " mold a " is ambiguous; use px/N or ch/N"]
+                ]
+                any [tuple? a  all [word? a  tuple? attempt [get a]]] [
+                    either color [
+                        problem: "IMAGE takes at most one box colour"
+                    ][
+                        color: either tuple? a [a][get a]
+                    ]
+                ]
+                true [
+                    problem: rejoin ["unexpected argument " mold a " for IMAGE"]
+                ]
+            ]
+            if problem [break]
         ]
+        if all [none? problem  none? src][
+            problem: "IMAGE needs a source: a file, a string path, or an image value"
+        ]
+        reduce [w src box inset color problem]
     ]
 
     image-width: func [
@@ -1902,7 +1967,9 @@ report-styles: context [
         file: ia/2
         item-styles: copy []
         either empty? row/lines [
-            cap: either file [image-stem file][""]
+            ; default caption = the file's stem; an in-memory image has no name,
+            ; so it gets no caption unless one is supplied
+            cap: either all [file? file][image-stem file][none]
         ][
             lst: row/lines/1
             pair: lst/1
@@ -1926,7 +1993,7 @@ report-styles: context [
         ia: parse-image-args row/args
         file: ia/2
         if not file [return line-height]
-        iobj: attempt [load file]
+        iobj: either image? file [file][attempt [load file]]
         if not iobj [return line-height]
         asp: to float! iobj/size/y / iobj/size/x
         ci: image-caption-info build-image-caption row img-styles

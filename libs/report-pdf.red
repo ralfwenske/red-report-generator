@@ -1080,13 +1080,13 @@ report-pdf: make report-styles [
     img-tmp-counter: 0
 
     emit-image: function [
-        "Emit PDF code to render an image (JPEG XObject)"
+        "Emit PDF code to render an image (JPEG XObject); source = file! or image!"
         out [string!] x [number!] y [number!]
         display-w [integer!] display-h [integer!]
-        file [file!]
+        src [file! image!]
         /local key
     ][
-        key: pdf-kit/embed-image file
+        key: either image? src [pdf-kit/embed-image-value src][pdf-kit/embed-image src]
         unless key [return false]
         append out rejoin [
             "q " display-w " 0 0 " display-h " "
@@ -1154,18 +1154,26 @@ report-pdf: make report-styles [
         "Emit an image row inside a column; returns the (uniform) row height consumed"
         out [string!] x [integer!] y [integer!]
         row [object!] col-w [integer!] avail [integer!] col-styles [block! none!] col-img-w [issue! none!] img-row-h [integer!]
-        /local h ia wfile img ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles ch cw asp cap-line
+        /local h ia wsrc img ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles ch cw asp cap-line
     ][
         h: line-height
         ia: parse-image-args row/args
         if all [not empty? ia ia/2][
-            wfile: ia/2
-            img: attempt [load wfile]
+            wsrc: ia/2
+            img: either image? wsrc [wsrc][attempt [load wsrc]]
             if image? img [
                 ci: image-caption-info build-image-caption row col-styles
-                base-color: ci/2
                 img-cap: ci/1
                 cap-styles: ci/5
+                either ia/3 [
+                    base-color: any [ia/5 get 'silver]
+                    inset: ia/4
+                    shadow?: ia/3 = 'shadow
+                ][
+                    base-color: ci/2
+                    inset: ci/3
+                    shadow?: ci/4
+                ]
                 cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
                 cap-h: either img-cap [line-advance cap-line :pdf-metrics][0]
                 asp: to float! img/size/y / img/size/x
@@ -1176,13 +1184,13 @@ report-pdf: make report-styles [
                     if (to integer! (cw * asp)) > ch [cw: max 1 (to integer! (ch / asp))]
                     cw
                 ]
-                ge: image-geometry reduce [base-color ci/3 ci/4] (min base-w col-w) asp ch
+                ge: image-geometry reduce [base-color inset shadow?] (min base-w col-w) asp ch
                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
                 bx: ge/5  by: ge/6  ix: ge/7  iy: ge/8  block-h: ge/9
                 if base-color [
                     emit out [pdf-kit/rgb base-color " rg " (pdf-kit/num (x + bx)) " " (pdf-kit/num (y + by - bh)) " " (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
                 ]
-                if emit-image out (x + ix) (y + iy) img-w img-h wfile [
+                if emit-image out (x + ix) (y + iy) img-w img-h wsrc [
                     if img-cap [emit-styled-text out x (y - block-h - cap-h) img-cap bw "C" cap-styles]
                 ]
             ]
@@ -1440,13 +1448,21 @@ report-pdf: make report-styles [
                     image [
                         ia: parse-image-args line/args
                         if all [not empty? ia ia/2][
-                            img-file: ia/2
-                            img-obj: attempt [load img-file]
+                            img-src: ia/2
+                            img-obj: either image? img-src [img-src][attempt [load img-src]]
                             either img-obj [
                                 cap-info: image-caption-info build-image-caption line none
-                                base-color: cap-info/2
                                 img-cap: cap-info/1
                                 cap-styles: cap-info/5
+                                either ia/3 [
+                                    base-color: any [ia/5 get 'silver]
+                                    inset: ia/4
+                                    shadow?: ia/3 = 'shadow
+                                ][
+                                    base-color: cap-info/2
+                                    inset: cap-info/3
+                                    shadow?: cap-info/4
+                                ]
                                 decl-w: image-declared-width ia cap-info
                                 img-aspect: to float! img-obj/size/y / img-obj/size/x
                                 cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
@@ -1465,7 +1481,7 @@ report-pdf: make report-styles [
                                     if (to integer! (iw * img-aspect)) > img-avail-h [iw: max 1 (to integer! (img-avail-h / img-aspect))]
                                     iw
                                 ]
-                                ge: image-geometry reduce [base-color cap-info/3 cap-info/4] img-base-w img-aspect img-avail-h
+                                ge: image-geometry reduce [base-color inset shadow?] img-base-w img-aspect img-avail-h
                                 block-h: ge/9
                                 if (page-y - block-h - line-height - cap-h) < page-bottom [
                                     new-page
@@ -1477,7 +1493,7 @@ report-pdf: make report-styles [
                                         if (to integer! (iw * img-aspect)) > img-avail-h [iw: max 1 (to integer! (img-avail-h / img-aspect))]
                                         iw
                                     ]
-                                    ge: image-geometry reduce [base-color cap-info/3 cap-info/4] img-base-w img-aspect img-avail-h
+                                    ge: image-geometry reduce [base-color inset shadow?] img-base-w img-aspect img-avail-h
                                     block-h: ge/9
                                 ]
                                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
@@ -1487,13 +1503,13 @@ report-pdf: make report-styles [
                                         (pdf-kit/num (margin-left + bx)) " " (pdf-kit/num (page-y + by - bh)) " "
                                         (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
                                 ]
-                                emit-image page-content (margin-left + ix) (page-y + iy) img-w img-h img-file
+                                emit-image page-content (margin-left + ix) (page-y + iy) img-w img-h img-src
                                 if img-cap [
                                     emit-styled-text page-content margin-left (page-y - block-h - cap-h) img-cap bw "C" cap-styles
                                 ]
                                 page-y: page-y - block-h - line-height - cap-h
                             ][
-                                print rejoin ["Warning: unsupported or unreadable image: " img-file]
+                                print rejoin ["Warning: unsupported or unreadable image: " img-src]
                             ]
                         ]
                     ]
@@ -1501,19 +1517,22 @@ report-pdf: make report-styles [
                         col-args: line/args
                         col-rows: line/lines
 
-                        ; args: [width] [gap] then optional column styles (m s b u i h1 h2 h3 ...)
+                        ; args (matched by type, order-free): one width (px/N, ch/N or
+                        ; auto), one gap (gap-ch/N or gap-px/N), optional column styles
                         col-styles: copy []
                         col-img-styles: line/img
                         col-img-w: report-styles/image-width col-img-styles
                         width-spec: 'auto
-                        gap-spec: none
-                        pos: 0
+                        gap-kind: none
+                        gap-n: none
                         foreach a col-args [
-                            either width-arg? a [
-                                pos: pos + 1
-                                either pos = 1 [width-spec: a][either pos = 2 [gap-spec: a][]]
-                            ][
-                                append col-styles a
+                            case [
+                                all [word? a  gs: report-styles/size-suffix a  find [gap-ch gap-px] gs/1][
+                                    gap-kind: gs/1
+                                    gap-n: gs/2
+                                ]
+                                width-arg? a [width-spec: a]
+                                true [append col-styles a]
                             ]
                         ]
                         ; rows with column styles applied (for measurement + rendering)
@@ -1529,8 +1548,12 @@ report-pdf: make report-styles [
                         ][
                             col-col-w: col-w-px width-spec cch
                         ]
-                        either all [width-arg? gap-spec  gap-spec <> 'auto][
-                            col-gap: col-w-px gap-spec cch
+                        either gap-kind [
+                            col-gap: either gap-kind = 'gap-ch [
+                                to integer! (gap-n * cch)
+                            ][
+                                gap-n
+                            ]
                         ][
                             col-gap: to integer! cch
                         ]

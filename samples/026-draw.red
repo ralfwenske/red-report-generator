@@ -18,7 +18,7 @@ Red [
 if exists? %samples/ [ change-dir %samples/ ]
 img: load %../assets/Red_Language_Tower_Logo.png
 
-report: [ 800x900 margin-30
+report: [ 800x900 margin/30
     [HEADER [["026 - Inline draw" [f2]]]]
     [BODY [
         ["This paragraph is framed by the DRAW that follows it: prev-* is its box." [b]]

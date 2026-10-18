@@ -18,19 +18,19 @@ report: [
     [BODY [
         ["Widget sales" [f2]]
         [TABLE [
-            ["Product" [< 18] "Qty" [> 6] "Unit" [> 10 money] "Total" [> 12 money]]
+            ["Product" [< ch/18] "Qty" [> ch/6] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
             ["Widget A" 120 25.00 3000.00]
             ["Widget B" 45 42.00 1890.00 [red]]
         ]]
         [TABLE BOX [
-            ["Product" [< 12] "Qty" [> 6] "Unit" [> 10 money] "Total" [> 12 money]]
+            ["Product" [< ch/12] "Qty" [> ch/6] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
             ["Widget A" 120 25.00 3000.00]
             [[b black yellow] "Widget B" 45 42.00 [!b i] 1890.00]  ;entire row can be styled
             ["Widget C" 12 35.00 420.00]
             ["Widget D" 7 199.00 1393.00]
         ]]
         [TABLE BOX ALT [
-            ["Product" [< 18] "Qty" [> 6] "Unit" [> 10 money] "Total" [> 12 money]]
+            ["Product" [< px/200] "Qty" [> px/100] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
             ["Widget A" 120 25.00 3000.00]
             ["Widget B" 45 42.00 1890.00]
             ["Widget C" 12 35.00 420.00]

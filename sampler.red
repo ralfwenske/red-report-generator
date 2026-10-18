@@ -45,7 +45,7 @@ get-samples: func [/local f] [
 get-samples
 
 error-popup: function [msg [string!]] [
-    page: compose/deep [580x160 margin-10 [BODY [
+    page: compose/deep [580x160 margin/10 [BODY [
         ["Error:" [h2 red]]
         [ (rejoin ["  " (msg) "  "]) [h3 white gray]]
     ]]]
