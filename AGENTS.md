@@ -1,0 +1,90 @@
+# Red Report Generator — agent notes
+
+Red script library that turns a block-based report description into a paginated
+View document and/or a PDF. No build step; run the scripts with Red.
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `libs/report-parser.red` | parse + validate the report block into a page object |
+| `libs/report-styles.red` | shared style/word/metrics/INK helpers (base of both renderers) |
+| `libs/report-view.red` | Red/View renderer + viewer (hotspots, zoom, PDF button) |
+| `libs/report-pdf.red` | PDF renderer (Base-14 fonts, JPEG images) |
+| `libs/pdf-kit.red` | minimal PDF writer |
+| `samples/` | runnable demos and the `tests/check.red` fixtures |
+| `assets/` | images and the generated `what-functions.txt` snapshot |
+| `docs/report-syntax-spec.md` | authoritative syntax reference |
+| `docs/cheatsheet.md` | condensed “what may I write here” |
+| `tests/check.red` | headless parse/validate/render harness |
+
+## Build / test
+
+```bash
+red tests/check.red          # parse + validate every samples/*.red
+red tests/check.red --pdf    # also render each sample to PDF (headless)
+```
+
+Both must end with `samples: N passed: N failed: 0`. Run this after any library
+change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning);
+`red-view` is the GUI build used to actually view reports.
+
+## DSL invariants (current — do not regress)
+
+- **Widths are explicit**: `px/N` or `ch/N`; never a bare integer. `COLUMN` width is
+  `px/N`/`ch/N`/`auto`; its gap is `gap-ch/N` or `gap-px/N`; `IMAGE` width is
+  `px/N`/`ch/N`. A float `w.d` is a *number format*, not a width.
+- **Path notation only**: `ss/9`, `margin/10`, `link/1`, `border/2`, `gap-ch/2`.
+  Legacy `ss-9`/`margin-10`/`#70px` forms are rejected by validation.
+- **Arguments are type-matched, not positional** (`IMAGE`, `COLUMN`). A modifier
+  carries its optional value as `/N` (`border/2`, `shadow/5`, `gap-ch/4`).
+- **Headings**: `h1`/`h2`/`h3` style *and* register TOC entries; `f1`/`f2`/`f3`
+  are the style-only equivalents, `f4` resets to base size.
+- **IMAGE**: `[IMAGE width? (shadow|border)(/N)? colour? source]` with source
+  `file!`/`string!`/`image!`; caption style block is pure text styles.
+- **HEADER/FOOTER** contain text lines only. An in-body `HEADER`/`FOOTER` is a
+  running override applied from the **next page onward**.
+- **Tokens**: `<page>`, `<pages>`, `<now>` (replaced in header/body/footer). Escape
+  a literal one with a backslash: `\<page>`, `\<now>`.
+- **TOC**: `[TOC [pattern lines]]`; `<hN>`/`<t-page>` placeholders; `link/toc` in a
+  pattern style makes entries clickable (View-only jump).
+- **Metrics**: a line box is split into true ascent/descent with
+  `report-styles/box-ascent-frac`; do not reintroduce “ascent = line-box height”.
+  This is what keeps mixed font families on one baseline.
+- **PDF**: Base-14 fonts; links/hints, hotspots and `%page-size%` are View-only.
+  Images are embedded as JPEG XObjects (lossy).
+
+## Generated asset
+
+`samples/100-long-text.red` loads `assets/what-functions.txt`, a **single Red
+block** snapshot of Red's function list. It is session-independent on purpose
+(calling `what` at render time would list the sampler's globals and change the
+page count). Regenerate with the same build used to view:
+
+```bash
+red-view assets/make-what-functions.red   # writes assets/what-functions.txt
+```
+
+Keep the generator free of function definitions (they would list themselves);
+it captures `what` before defining its helpers.
+
+## Conventions / gotchas
+
+- `samples/*-mod.red` are gitignored scratch variants; `tests/check.red` still
+  picks them up locally if present.
+- Samples use `if exists? %samples/ [change-dir %samples/]`; asset paths are
+  `%../assets/...`.
+- `tests/check.red` stubs `show-report` (returns `""`) and `alert` (no-op), and
+  evaluates each sample with the samples dir as cwd.
+- Bare words are invalid as line values (except `none`); keywords are recognized
+  only as the first element of a block.
+- The View renders each page at the display zoom and shows it 1:1; PDF parity is
+  checked by rasterizing both when changing metrics.
+- Known cosmetic issue: the 1 px TOC link underline can look clipped at a few
+  fractional zoom levels (rasterization); accepted, do not “fix” with line gaps.
+
+## When adding syntax
+
+Update all of: parser (arg kinds/validation), both renderers, measurement
+(`measure-column-pixels` where relevant), `docs/report-syntax-spec.md`,
+`docs/cheatsheet.md`, and add/extend a sample. Then run both check modes.
