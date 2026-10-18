@@ -1799,7 +1799,9 @@ report-view: make report-styles [
         toolbar-h: 50
         popup-handler: :popup-fn
         ; window title shows the page size; the saved PDF keeps the clean name
-        display-title: rejoin [window-title "  (" page-width " x " page-height ")"]
+        ;display-title: rejoin [window-title "  (" page-width " x " page-height ")"]
+        display-title: replace window-title "%page-size%" rejoin [page-width " x " page-height]
+        window-title: replace window-title "%page-size%" ""
         hovered-hs: none
         hint-active: false
         hint-start: now/time/precise

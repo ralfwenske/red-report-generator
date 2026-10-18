@@ -1132,8 +1132,27 @@ report-styles: context [
         reduce [boxed? alt?]
     ]
 
+    ; private marker used to protect escaped token-like text (\<page> etc.)
+    token-escape-marker: to string! to char! 1
+
+    token-escape: func [
+        {Protect escaped token-like text: `\<page>` becomes `<` + a private marker +
+         `page>`, so the token pass cannot match it. The marker is stripped by
+         token-unescape after replacement. Backslash is a literal in Red strings.}
+        text [string!]
+    ][
+        replace/all copy text "\<" rejoin ["<" token-escape-marker]
+    ]
+
+    token-unescape: func [
+        "Remove the private marker left by token-escape."
+        text [string!]
+    ][
+        replace/all copy text token-escape-marker ""
+    ]
+
     replace-tokens: func [
-        "Replace <page>, <pages> tokens (and %DATE%, %TIME%, %DATETIME%)"
+        "Replace <page>, <pages> tokens (and %DATE%, %TIME%, %DATETIME%); unescape \\<…"
         text [string!] page-num [integer!] total-pages [integer!]
         date-str [string!] time-str [string!] datetime-str [string!]
     ][
@@ -1143,7 +1162,7 @@ report-styles: context [
         text: replace/all text "%DATE%" date-str
         text: replace/all text "%TIME%" time-str
         text: replace/all text "%DATETIME%" datetime-str
-        text
+        token-unescape text
     ]
 
     ;=== Layout math ===
@@ -1713,6 +1732,9 @@ report-styles: context [
         case [
             none? val   [""]
             string? val [
+                ; protect escaped token-like text (\<page>, \<now>, …) first, so
+                ; neither the <now> expansion below nor the token pass matches it
+                val: token-escape val
                 ; <now> is replaced with the current date/time, per the style block
                 ; (copy: never mutate the parsed report data, it may be rendered again)
                 if find val "<now>" [

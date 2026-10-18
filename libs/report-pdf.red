@@ -1070,6 +1070,8 @@ report-pdf: make report-styles [
                 emit-header/tokens page-ps p-h hy date-str time-str datetime-str p total-pages
             ]
             if p-f [emit-footer page-ps p-f p total-pages date-str time-str datetime-str]
+            ; drop the marker left by \\< escapes (content text is hex-encoded here)
+            replace/all page-ps (pdf-kit/hex token-escape-marker) ""
             append pd-pages make object! [content: page-ps]
         ]
         pdf-kit/set-paper page-width page-height

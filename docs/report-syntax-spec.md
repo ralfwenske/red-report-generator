@@ -540,6 +540,13 @@ preferred way to show a date/time is a value + format style (see §5.3):
 
 Example: `["Page <page> of <pages>" [b] (now) [time]]`
 
+**Escaping.** To show a token literally, prefix the `<` with a backslash:
+`["Use \<page> for the number"]` renders `Use <page> for the number` (no replacement).
+`\<` protects the `<` from both `<now>` expansion and the `<page>`/`<pages>` pass, and
+the backslash itself is removed at render. This works in BODY text, COLUMN rows,
+HEADER and FOOTER. (Backslash is a literal character in Red strings, so no extra
+quoting is needed.)
+
 ### 9.1 Table of contents
 
 `h1`/`h2`/`h3` render like the style-only `f1`/`f2`/`f3` **and** register a heading.
@@ -741,6 +748,7 @@ validate-report page         ; -> "" | error message string
 dump-report page-obj         ; debug print of the parsed structure
 
 show-report report title                          ; parse a report block and show it (full/proportional view)
+                                                  ; title may contain %page-size% (see below)
 show-report/fit-width report title                ; start in fit-width mode
 show-report/popup report title popup-fn           ; pass a click/hover callback
 show-report/popup/fit-width report title popup-fn ; callback + fit-width
@@ -806,6 +814,23 @@ Paper formats: `'a4` `'letter` `'legal` `'a3` `'a5` or an explicit `WxH` pair
 Default is a4 portrait (595×842 pt, 50 pt margins).
 
 Example: `compose/deep [landscape letter [HEADER …] [BODY …] [FOOTER …]]`
+
+### 12.1 Window title and `%page-size%`
+
+The `title` argument is used for the viewer window title and for the saved-PDF file
+name. Page size is **not** appended automatically. To show it in the window title,
+put the placeholder `%page-size%` in the title string:
+
+```red
+show-report/fit-width report "005 — Minimal %page-size%"
+```
+
+- **Window title:** `%page-size%` is replaced by the page size in points,
+  `width x height` (e.g. `595 x 842`).
+- **Saved PDF file name:** the placeholder is removed, so files keep a clean name
+  (`005 — Minimal.pdf`).
+- A title without `%page-size%` shows no page size (the previous automatic
+  `" (W x H)"` suffix was removed).
 
 ---
 

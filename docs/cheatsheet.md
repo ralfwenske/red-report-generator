@@ -217,8 +217,10 @@ block still parse.)
 | `%DATE%` `%TIME%` `%DATETIME%` | legacy equivalents |
 
 `<now>` works inside a string (`"Time: <now>" [time]`) or as a pure tag value (`<now> [date]`).
-Tokens are currently replaced **everywhere** (header, body/content, footer) by both renderers.
-There is no escape for literal `<page>`/`<now>` in body data.
+Tokens are replaced **everywhere** (header, body/content, footer) by both renderers.
+**Escape a literal token with a backslash:** `"Use \<page> for the number"` renders
+`Use <page> for the number` (backslash removed). `\<` protects both `<now>` and
+`<page>/<pages>`; it works in BODY, COLUMN rows, HEADER and FOOTER.
 
 ---
 
@@ -289,6 +291,9 @@ boxes. No context has a default unit any more.
 - Use `compose/deep` to splice computed blocks (e.g. a generated list of rows).
 - Unknown leading paper words and unknown style words fail `validate-report`.
 - A bare word used as a value is rejected (`none` is the exception).
+- `show-report` window title: put `%page-size%` where the page size should appear. It is
+  replaced by `W x H` (points) **in the window title only**, and removed from the
+  saved-PDF file name. Without it, no page size is shown (no automatic suffix).
 
 ---
 
@@ -302,7 +307,7 @@ boxes. No context has a default unit any more.
 - [ ] A data line starting with a keyword word is parsed as that keyword — quote it.
 - [ ] `[]` is a blank line; an empty *items* block is `[BODY []]`.
 - [ ] Header/footer lines are positional L/C/R; BODY lines flow left→right.
-- [ ] `<page>/<pages>/<now>` expand in body text too (no escape).
+- [ ] `<page>/<pages>/<now>` expand in body text too; write `\<page>` to show them literally.
 - [ ] `h*` = style **and** TOC marker; use `f*` for style only.
 - [ ] `DRAW-BG` needs Red/View (omitted in headless PDF output).
 
