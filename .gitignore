@@ -7,8 +7,9 @@ check-*.pdf
 # Local screenshots / rendered page images (keep the sample's own asset)
 *.png
 !samples/code-viewer.png
+!assets/*.png
 
-# Variants saved by sampler2 (…-mod.red)
+# Variants saved by sampler (…-mod.red)
 samples/*-mod.red
 
 # Local backups and stray outputs
