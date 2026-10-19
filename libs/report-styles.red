@@ -311,6 +311,21 @@ report-styles: context [
         not all [bg opaque-tuple? bg]
     ]
 
+    norm-style-atom: func [
+        {Normalise a style atom: a 2-component path (ss/9, px/80, link/2) is turned
+         into its dash-word form (ss-9, px-80, link-2); any other value is returned
+         unchanged. Style atoms can arrive as paths when a style block is produced by
+         a runtime paren (composed after the parser's norm-arg pass).}
+        s [any-type!]
+        /local p
+    ][
+        unless path? s [return s]
+        p: s
+        if (length? p) <> 2 [return s]
+        unless all [any [word? p/1 integer? p/1]  any [word? p/2 integer? p/2]][return s]
+        to word! rejoin [form p/1 "-" form p/2]
+    ]
+
     style-split: func [
         {Split a style block into [directives colors]. Colours are every tuple or
          colour word in the block, in order, wherever they appear; directives are
@@ -321,10 +336,13 @@ report-styles: context [
         dir: copy []
         col: copy []
         foreach s st [
+            ; a path! must not be appended bare: append would splice it into its
+            ; components (ss/9 -> ss 9), leaking a bare integer width downstream
+            s: norm-style-atom s
             either any [tuple? s  all [word? s  tuple? attempt [get s]]][
-                append col s
+                append/only col s
             ][
-                append dir s
+                append/only dir s
             ]
         ]
         reduce [dir col]

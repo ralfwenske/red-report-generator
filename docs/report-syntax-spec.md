@@ -313,7 +313,10 @@ line-item    := [ value style-block? value style-block? … ]
 - Height derives from the image's aspect ratio; the base extends the occupied height.
   Works in both renderers, including inside a `COLUMN`.
 - PDF output embeds images as **JPEG XObjects** (any loadable image is converted to
-  JPEG; the View renderer loads images natively; links/hints are View-only).
+  JPEG; the View renderer loads images natively; links/hints are View-only). JPEG
+  cannot carry alpha, so a transparent source (e.g. an RGBA PNG) also gets a
+  grayscale `/SMask` XObject and composites correctly over any backdrop; a fully
+  opaque image gets no SMask.
 
 ### 4.5 Page-break items
 
@@ -875,7 +878,7 @@ units, validation) were never in the draft.
 6. **Custom named colors must be global** — a color word defined inside the report
    object is not found by `resolve-colors`.
 7. **Section/TABLE style args now thread down** — `HEADER`/`BODY`/`FOOTER` and `TABLE` accept style words that inherit to every line/row/cell (per-value merge on top, `!X` cancels); only *non-style* section args (background, indent, column layout) are un-implemented.
-8. **PDF images are JPEG-only** — PNG/BMP sources are converted lossily to JPEG.
+8. **PDF images are JPEG-only** — PNG/BMP sources are converted lossily to JPEG; a source with transparency also carries a grayscale `/SMask` so it composites over the backdrop.
 9. **Headings and font scale are hard-coded per renderer** — heading sizes 24/18/14 pt; `font-size 12` pt and `line-height 18` pt in both; View scales headings by `font-scale 0.82`, PDF by `1.0`.
 10. **`HEADER`/`FOOTER` accept text lines only** — `TABLE`/`COLUMN`/`IMAGE`/`DRAW` are
     not rendered there and are rejected by validation. Use `DRAW-BG` for a page-wide
@@ -1064,9 +1067,10 @@ content stream and need separate height accounting, so they are rejected for now
 
 ### 16.7 FRAME — a measured backdrop
 
-`[FRAME R [draw-ops] [items]]` lays out its `items` (BODY text lines) to **measure**
+`[FRAME R [items] [draw-ops]]` lays out its `items` (BODY text lines) to **measure**
 them, then draws the `draw-ops` backdrop **behind** them. `R` is the padding around
-the measured content box (integer, default 0).
+the measured content box (integer, default 0). The items block comes **first**
+because it is measured before the backdrop is drawn.
 
 This is the way to fill behind a wrapping paragraph: `DRAW` runs after its element
 and can only paint *on top*, and the paragraph's height isn't known until it is laid
@@ -1074,11 +1078,11 @@ out.
 
 ```red
 [FRAME 8 [
-    pen 90.120.200  fill-pen 238.242.255  line-width 1
-    box (as-pair x y) (as-pair x + w y + h) 6      ; rounded backdrop
-] [
     ["A paragraph that wraps, framed from behind." [b]]
     ["A second line." [m]]
+] [
+    pen 90.120.200  fill-pen 238.242.255  line-width 1
+    box (as-pair x y) (as-pair x + w y + h) 6      ; rounded backdrop
 ]]
 ```
 

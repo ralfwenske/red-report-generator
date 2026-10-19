@@ -149,17 +149,28 @@ pdf-kit: context [
     img-tmp: 0
 
     embed-image-bytes: func [
-        "Embed an in-memory image! as a JPEG XObject; returns its key (or none)."
+        "Embed an in-memory image! as a JPEG XObject, with an optional alpha SMask; returns its key (or none)."
         img [image!]
-        /local tmp jpg key
+        /local tmp jpg key argb a
     ][
         img-tmp: img-tmp + 1
         tmp: to file! rejoin [what-dir %.img-tmp- img-tmp ".jpg"]
         save/as tmp img 'jpeg
         jpg: read/binary tmp
         delete tmp
-        key: to word! rejoin ["Im" (to integer! ((length? images) / 4)) + 1]
-        append images reduce [key img/size/x img/size/y jpg]
+        ; JPEG has no alpha channel. Red keeps transparency in the image's
+        ; 4-byte-per-pixel buffer (image/argb, byte order B G R A); the alpha byte is
+        ; the 4th. It travels to the PDF as a grayscale /SMask so the image
+        ; composites over any backdrop. A fully opaque alpha is dropped (no SMask).
+        a: none
+        argb: attempt [img/argb]
+        if argb [
+            a: extract/index argb 4 4
+            ; a fully opaque alpha needs no SMask
+            if parse a [some #{FF} end][a: none]
+        ]
+        key: to word! rejoin ["Im" (to integer! ((length? images) / 5)) + 1]
+        append images reduce [key img/size/x img/size/y jpg a]
         key
     ]
 
@@ -187,18 +198,32 @@ pdf-kit: context [
 
     save-pdf: func [file [file!] pages [block!]
         /local n m c0 i0 r0 f0 kids fonts-str imgs-str body out offs
-        put-obj xref-off img-key img-w img-h img-bytes content-len
+        put-obj xref-off img-key img-w img-h img-bytes img-alpha content-len
+        imgnums next-obj imgobj smobj smbody
     ][
         n: length? pages
-        m: to integer! ((length? images) / 4)
+        m: to integer! ((length? images) / 5)
 
         ;-- object numbering: 1 catalog, 2 pages tree,
-        ;-- then page dicts, then content streams, then images,
-        ;-- then resources, then the 12 base-14 font dicts
+        ;-- then page dicts, then content streams, then images (plus an
+        ;-- alpha SMask object per transparent image), then resources,
+        ;-- then the 12 base-14 font dicts
         c0: 3
         i0: c0 + n            ;-- first content stream object
         g0: i0 + n            ;-- first image XObject object
-        r0: g0 + m            ;-- resources object
+        imgnums: copy []
+        next-obj: g0
+        repeat j m [
+            imgobj: next-obj
+            next-obj: next-obj + 1
+            smobj: none
+            if pick images ((j - 1) * 5) + 5 [
+                smobj: next-obj
+                next-obj: next-obj + 1
+            ]
+            append imgnums reduce [imgobj smobj]
+        ]
+        r0: next-obj          ;-- resources object
         f0: r0 + 1            ;-- first font object
 
         out: make binary! 40000
@@ -238,22 +263,37 @@ pdf-kit: context [
             ]
         ]
 
-        ;-- image XObjects (DCTDecode = raw JPEG bytes)
+        ;-- image XObjects (DCTDecode = raw JPEG bytes; optional /SMask for alpha)
         repeat j m [
-            img-key: pick images ((j - 1) * 4) + 1
-            img-w:   pick images ((j - 1) * 4) + 2
-            img-h:   pick images ((j - 1) * 4) + 3
-            img-bytes: pick images ((j - 1) * 4) + 4
+            img-key: pick images ((j - 1) * 5) + 1
+            img-w:   pick images ((j - 1) * 5) + 2
+            img-h:   pick images ((j - 1) * 5) + 3
+            img-bytes: pick images ((j - 1) * 5) + 4
+            img-alpha: pick images ((j - 1) * 5) + 5
+            imgobj: pick imgnums ((j - 1) * 2) + 1
+            smobj:  pick imgnums ((j - 1) * 2) + 2
             body: make binary! 4096
             append body to binary! rejoin [
                 "<< /Type /XObject /Subtype /Image /Width " img-w
                 " /Height " img-h " /ColorSpace /DeviceRGB"
                 " /BitsPerComponent 8 /Filter /DCTDecode"
+                either smobj [rejoin [" /SMask " smobj " 0 R"]][""]
                 " /Length " (length? img-bytes) " >>" lf "stream" lf
             ]
             append body img-bytes
             append body to binary! rejoin [lf "endstream"]
-            put-obj out offs (g0 + j - 1) body
+            put-obj out offs imgobj body
+            if smobj [
+                smbody: make binary! 4096
+                append smbody to binary! rejoin [
+                    "<< /Type /XObject /Subtype /Image /Width " img-w
+                    " /Height " img-h " /ColorSpace /DeviceGray"
+                    " /BitsPerComponent 8 /Length " (length? img-alpha) " >>" lf "stream" lf
+                ]
+                append smbody img-alpha
+                append smbody to binary! rejoin [lf "endstream"]
+                put-obj out offs smobj smbody
+            ]
         ]
 
         ;-- resources: all 12 fonts + all embedded images
@@ -262,7 +302,7 @@ pdf-kit: context [
         imgs-str: copy ""
         repeat j m [
             append imgs-str rejoin [
-                "/" (pick images ((j - 1) * 4) + 1) " " (g0 + j - 1) " 0 R "
+                "/" (pick images ((j - 1) * 5) + 1) " " (pick imgnums ((j - 1) * 2) + 1) " 0 R "
             ]
         ]
         put-obj out offs r0 rejoin ["<< /Font << " fonts-str ">> /XObject << " imgs-str ">> >>"]

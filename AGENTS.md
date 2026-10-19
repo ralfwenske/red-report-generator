@@ -10,7 +10,7 @@ View document and/or a PDF. No build step; run the scripts with Red.
 | `libs/report-parser.red` | parse + validate the report block into a page object |
 | `libs/report-styles.red` | shared style/word/metrics/INK helpers (base of both renderers) |
 | `libs/report-view.red` | Red/View renderer + viewer (hotspots, zoom, PDF button) |
-| `libs/report-pdf.red` | PDF renderer (Base-14 fonts, JPEG images) |
+| `libs/report-pdf.red` | PDF renderer (Base-14 fonts, JPEG images + `/SMask` alpha) |
 | `libs/pdf-kit.red` | minimal PDF writer |
 | `samples/` | runnable demos and the `tests/check.red` fixtures |
 | `assets/` | images and the generated `what-functions.txt` snapshot |
@@ -52,7 +52,8 @@ change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning
   `report-styles/box-ascent-frac`; do not reintroduce “ascent = line-box height”.
   This is what keeps mixed font families on one baseline.
 - **PDF**: Base-14 fonts; links/hints, hotspots and `%page-size%` are View-only.
-  Images are embedded as JPEG XObjects (lossy).
+  Images are embedded as JPEG XObjects (lossy); transparency (e.g. RGBA PNGs) is
+  carried as a grayscale `/SMask`, fully opaque images get none.
 
 ## Generated asset
 
@@ -62,7 +63,7 @@ block** snapshot of Red's function list. It is session-independent on purpose
 page count). Regenerate with the same build used to view:
 
 ```bash
-red-view assets/make-what-functions.red   # writes assets/what-functions.txt
+red-view assets/utils/make-what-functions.red   # writes assets/what-functions.txt
 ```
 
 Keep the generator free of function definitions (they would list themselves);

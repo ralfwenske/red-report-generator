@@ -134,19 +134,20 @@ parse-section: func [
                 pos: next pos
                 continue
             ]
-            ; FRAME: optional integer padding, then [draw-ops] (raw, evaluated by the
-            ; renderer with the measured content box) and [items] (the framed content).
+            ; FRAME: optional integer padding, then [items] (the framed content,
+             ; laid out first to measure its extent) and [draw-ops] (raw, evaluated
+             ; by the renderer with the measured content box).
             if kw-type = 'frame [
                 while [all [not tail? inner not block? inner/1 not paren? inner/1]][
                     append kw-args inner/1
                     inner: next inner
                 ]
                 if all [not tail? inner block? inner/1][
-                    frm-ops: copy inner/1
+                    body: parse-section/base inner/1 bs
                     inner: next inner
                 ]
                 if all [not tail? inner block? inner/1][
-                    body: parse-section/base inner/1 bs
+                    frm-ops: copy inner/1
                     inner: next inner
                 ]
                 append/only result object [type: kw-type args: kw-args img: none lines: body ops: frm-ops]
@@ -261,33 +262,34 @@ parse-section: func [
         {Normalise a qualified argument: a 2-component path base/value is turned into
          the equivalent dash word for the internal vocabulary (ss/10 -> ss-10,
          margin/20 -> margin-20, px/80 -> px-80, link/2 -> link-2); any other value is
-         returned unchanged. The dash spelling is a legacy alias accepted directly.}
+         returned unchanged. The dash spelling is a legacy alias accepted directly.
+         Delegates to report-styles/norm-style-atom so paths normalise identically
+         whether they arrive here or inside a style block.}
         v [any-type!]
-        /local p a b
     ][
-        if not path? v [return v]
-        p: v
-        if (length? p) <> 2 [return v]
-        a: pick p 1  b: pick p 2
-        unless all [any [word? a  integer? a]  any [word? b  integer? b]][return v]
-        to word! rejoin [form a "-" form b]
+        report-styles/norm-style-atom v
     ]
 
     protect-frame: func [
-        "Stash a FRAME's [draw-ops] block; leave its [items] blocks for compose/deep"
+        "Stash a FRAME's [draw-ops] block (the second block); leave its [items] block for compose/deep"
         e [block!] stashed [block!]
-        /local out first-block? x
+        /local out seen-items? seen-ops? x
     ][
         out: copy []
-        first-block?: true
+        seen-items?: seen-ops?: false
         foreach x e [
             either block? x [
-                either first-block? [
-                    append/only stashed copy/deep x
-                    append out to word! rejoin ["__draw-marker-" length? stashed]
-                    first-block?: false
-                ][
-                    append/only out defer-draws x stashed
+                case [
+                    not seen-items? [
+                        append/only out defer-draws x stashed
+                        seen-items?: true
+                    ]
+                    not seen-ops? [
+                        append/only stashed copy/deep x
+                        append out to word! rejoin ["__draw-marker-" length? stashed]
+                        seen-ops?: true
+                    ]
+                    true [append/only out defer-draws x stashed]
                 ]
             ][
                 append/only out x
@@ -1074,7 +1076,7 @@ parse-section: func [
                                 return rejoin [sec-name " line " i ": FRAME padding must be 0 or more"]
                             ]
                             unless block? ln/ops [
-                                return rejoin [sec-name " line " i ": FRAME needs a draw block, e.g. [FRAME 6 [box ...] [items]]"]
+                                return rejoin [sec-name " line " i ": FRAME needs a draw block, e.g. [FRAME 6 [items] [box ...]]"]
                             ]
                             parsed: report-styles/draw-parse ln/ops
                             if all [not empty? parsed  parsed/1 = 'error][

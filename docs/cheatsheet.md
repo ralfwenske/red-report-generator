@@ -70,7 +70,7 @@ Args are matched **by type, not position**; a modifier carries its optional valu
 | `IMAGE` | `BODY`, `COLUMN` | width? (shadow\|border)(/N)? colour? source | optional caption line `["cap" [styles]]` |
 | `PAGEBREAK` | `BODY`, `COLUMN`, `TABLE` rows | optional integer = reserve n lines | — |
 | `DRAW` | `BODY` | optional integer `H` (points consumed) | raw draw ops |
-| `FRAME` | `BODY` | optional integer padding | `[draw ops]` then `[items]` |
+| `FRAME` | `BODY` | optional integer padding | `[items]` then `[draw ops]` |
 | `TOC` | `BODY` | style words | pattern lines |
 
 Notes:
