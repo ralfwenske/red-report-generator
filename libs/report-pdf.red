@@ -1038,6 +1038,33 @@ report-pdf: make report-styles [
         lm/2
     ]
 
+    strip-escape-marker: function [
+        {Remove the \< escape marker byte (0x01) from <hex> text runs only.
+         Byte-aligned via debase/enbase: a plain decimal number such as `101`
+         contains the literal substring "01", so a whole-content replace/all would
+         corrupt every number whose hex-pair equals the marker.}
+        s [string!]
+        /local out run bin clean byte ch
+    ][
+        out: copy ""
+        parse s [
+            any [
+                copy run [#"<" to #">" #">"] (
+                    bin: attempt [debase copy/part (at run 2) (length? run) - 2]
+                    either bin [
+                        clean: make binary! length? bin
+                        foreach byte bin [unless byte = 1 [append clean byte]]
+                        append out rejoin ["<" enbase clean ">"]
+                    ][
+                        append out run
+                    ]
+                )
+                | copy ch skip (append out ch)
+            ]
+        ]
+        out
+    ]
+
     assemble-pdf: function [
         "Build PDF page objects from page buffers"
         pages [block!] total-pages [integer!]
@@ -1070,8 +1097,8 @@ report-pdf: make report-styles [
                 emit-header/tokens page-ps p-h hy date-str time-str datetime-str p total-pages
             ]
             if p-f [emit-footer page-ps p-f p total-pages date-str time-str datetime-str]
-            ; drop the marker left by \\< escapes (content text is hex-encoded here)
-            replace/all page-ps (pdf-kit/hex token-escape-marker) ""
+            ; drop the marker left by \\< escapes (only inside <hex> text runs)
+            page-ps: strip-escape-marker page-ps
             append pd-pages make object! [content: page-ps]
         ]
         pdf-kit/set-paper page-width page-height
@@ -1156,7 +1183,7 @@ report-pdf: make report-styles [
         "Emit an image row inside a column; returns the (uniform) row height consumed"
         out [string!] x [integer!] y [integer!]
         row [object!] col-w [integer!] avail [integer!] col-styles [block! none!] col-img-w [issue! none!] img-row-h [integer!]
-        /local h ia wsrc img ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles ch cw asp cap-line
+        /local h ia wsrc img ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles ch cw asp cap-line align ax
     ][
         h: line-height
         ia: parse-image-args row/args
@@ -1189,11 +1216,18 @@ report-pdf: make report-styles [
                 ge: image-geometry reduce [base-color inset shadow?] (min base-w col-w) asp ch
                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
                 bx: ge/5  by: ge/6  ix: ge/7  iy: ge/8  block-h: ge/9
-                if base-color [
-                    emit out [pdf-kit/rgb base-color " rg " (pdf-kit/num (x + bx)) " " (pdf-kit/num (y + by - bh)) " " (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
+                ; horizontal placement within the column cell (see generate)
+                ax: 0
+                align: ia/7
+                case [
+                    align = '^ [ax: max 0 (to integer! ((col-w - (min base-w col-w)) / 2))]
+                    align = '> [ax: max 0 (col-w - (min base-w col-w))]
                 ]
-                if emit-image out (x + ix) (y + iy) img-w img-h wsrc [
-                    if img-cap [emit-styled-text out x (y - block-h - cap-h) img-cap bw "C" cap-styles]
+                if base-color [
+                    emit out [pdf-kit/rgb base-color " rg " (pdf-kit/num (x + ax + bx)) " " (pdf-kit/num (y + by - bh)) " " (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
+                ]
+                if emit-image out (x + ax + ix) (y + iy) img-w img-h wsrc [
+                    if img-cap [emit-styled-text out (x + ax) (y - block-h - cap-h) img-cap bw "C" cap-styles]
                 ]
             ]
         ]
@@ -1500,14 +1534,22 @@ report-pdf: make report-styles [
                                 ]
                                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
                                 bx: ge/5  by: ge/6  ix: ge/7  iy: ge/8
+                                ; horizontal placement within the content width:
+                                ; < = left (default), ^ = centre, > = right
+                                img-ax: 0
+                                img-align: ia/7
+                                case [
+                                    img-align = '^ [img-ax: max 0 (to integer! ((img-avail-w - img-base-w) / 2))]
+                                    img-align = '> [img-ax: max 0 (img-avail-w - img-base-w)]
+                                ]
                                 if base-color [
                                     emit page-content [pdf-kit/rgb base-color " rg "
-                                        (pdf-kit/num (margin-left + bx)) " " (pdf-kit/num (page-y + by - bh)) " "
+                                        (pdf-kit/num (margin-left + img-ax + bx)) " " (pdf-kit/num (page-y + by - bh)) " "
                                         (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
                                 ]
-                                emit-image page-content (margin-left + ix) (page-y + iy) img-w img-h img-src
+                                emit-image page-content (margin-left + img-ax + ix) (page-y + iy) img-w img-h img-src
                                 if img-cap [
-                                    emit-styled-text page-content margin-left (page-y - block-h - cap-h) img-cap bw "C" cap-styles
+                                    emit-styled-text page-content (margin-left + img-ax) (page-y - block-h - cap-h) img-cap bw "C" cap-styles
                                 ]
                                 page-y: page-y - block-h - line-height - cap-h
                             ][

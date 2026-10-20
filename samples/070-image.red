@@ -6,8 +6,9 @@ Red [
 ]
 
 ; IMAGE args are matched by type, not position: optional width (px/N or ch/N), optional box modifier (shadow or border, with an
-; optional /N inset — e.g. shadow/3 or border/2), optional box colour, then the
-; source (file, string path or image!). Omit the width for intrinsic sizing
+; optional /N inset — e.g. shadow/3 or border/2), optional box colour, optional
+; alignment (< left, ^ centre, > right), then the source (file, string path or
+; image!). Omit the width for intrinsic sizing
 ; contained to the page. The trailing caption line's style block is pure text
 ; styles (link/N makes the whole image a hotspot, View only). Images live in
 ; assets/, so paths are relative to this sample: %../assets/<name>.jpg.
@@ -34,6 +35,11 @@ report: [
 
         ["A generated (in-memory) image — no file needed:" [f3]]
         [IMAGE px/80 border/1 silver (make image! reduce [200x100 0.128.255]) ["generated" [b white green]]]
+
+        ["Alignment: < left (default), ^ centre, > right — the token sits in the args:" [f3]]
+        [IMAGE < px/100 %../assets/Empress.jpg [""]]
+        [IMAGE ^ px/100 %../assets/Empress.jpg [""]]
+        [IMAGE > px/100 %../assets/Empress.jpg [""]]
 
         ["Thumbnails (the COLUMN width also sizes the images):" [f3]]
         [COLUMN px/60 gap-px/10 image [shadow/5 silver link/1 s/8][

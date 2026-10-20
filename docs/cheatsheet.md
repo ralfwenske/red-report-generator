@@ -67,7 +67,7 @@ Args are matched **by type, not position**; a modifier carries its optional valu
 | `DRAW-BG` | page level | optional integer = raster density | raw draw ops |
 | `TABLE` | `BODY` | `BOX`/`ALT` (any order) + style words | rows; **first row = header + column spec** |
 | `COLUMN` | `BODY` | width? (`px/N`/`ch/N`/`auto`) `gap-ch/N`|`gap-px/N`? style-words? [`image` `[img-styles]`]? | rows (lines / `IMAGE` / `PAGEBREAK`) |
-| `IMAGE` | `BODY`, `COLUMN` | width? (shadow\|border)(/N)? colour? source | optional caption line `["cap" [styles]]` |
+| `IMAGE` | `BODY`, `COLUMN` | width? (shadow\|border)(/N)? colour? (`<`\|`^`\|`>`)? source | optional caption line `["cap" [styles]]` |
 | `PAGEBREAK` | `BODY`, `COLUMN`, `TABLE` rows | optional integer = reserve n lines | — |
 | `DRAW` | `BODY` | optional integer `H` (points consumed) | raw draw ops |
 | `FRAME` | `BODY` | optional integer padding | `[items]` then `[draw ops]` |
@@ -165,6 +165,19 @@ Tuples (`255.165.0`) or colour words (`red`, `blue`, `coffee`, …). Order defin
 | 2nd colour | background |
 | 3rd colour | frame/border |
 
+**Shaded palette** (`0` lightest … `9` darkest) is provided globally by the library —
+no `do load` needed:
+
+`gray red pink grape violet indigo blue cyan teal green lime yellow orange`
+
+```red
+["soft" [black gray1]]   ["warn" [red8]]   fill-pen red3
+```
+
+Source of truth: `report-styles/shade-tuples` in `libs/report-styles.red`.
+Mirrored for use outside the generator by `assets/color-tuples.red`
+(`do load %assets/color-tuples.red`), generated via `assets/utils/make-colors.red`.
+
 ### 5.5 Interactive (View only)
 
 | Atom | Meaning |
@@ -179,12 +192,14 @@ whole image area interactive.
 
 IMAGE args are matched **by type, not position**:
 
-`[IMAGE width? (shadow|border)(/N)? colour? source]`
+`[IMAGE width? (shadow|border)(/N)? colour? (<|^|>)? source]`
 
 - `shadow` = drop shadow, `border` = frame box;
 - `/N` = inset in points (default 5% of the image width), attached to the word —
   `border/2`, `shadow/5`, like `ss/8`;
-- optional box colour (default `silver`).
+- optional box colour (default `silver`);
+- optional alignment `<` (left, default), `^` (centre), `>` (right) places the whole
+  image block within the content width (or the column cell): `[IMAGE ^ px/400 %f]`.
 
 A bare integer is always the image **width**, so order is irrelevant:
 `[IMAGE 120 shadow/3 silver %f]` ≡ `[IMAGE shadow/3 silver 120 %f]`.

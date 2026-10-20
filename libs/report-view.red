@@ -1107,7 +1107,7 @@ report-view: make report-styles [
         line [object!]
         /local ia img-src img-obj aspect avail-h avail-w base-w w
                ge base-color img-cap img-w img-h bw bh bx by ix iy block-h cap-h cap-info cap-styles
-               decl-w left-a right-a top-a bot-a avail-full cap-line inset shadow?
+               decl-w left-a right-a top-a bot-a avail-full cap-line inset shadow? align ax
     ][
         ia: parse-image-args line/args
         if all [not empty? ia ia/2][
@@ -1163,21 +1163,29 @@ report-view: make report-styles [
                 ]
                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
                 bx: ge/5  by: ge/6  ix: ge/7  iy: ge/8
+                ; horizontal placement of the whole image block within the content
+                ; width: < = left (default), ^ = centre, > = right
+                ax: 0
+                align: ia/7
+                case [
+                    align = '^ [ax: max 0 (to integer! ((avail-w - base-w) / 2))]
+                    align = '> [ax: max 0 (avail-w - base-w)]
+                ]
                 if base-color [
                     append page-draw compose [
                         fill-pen (base-color) pen off
-                        box (as-pair (margin-left + bx) (to-draw-y (page-y + by)))
-                             (as-pair (margin-left + bx + bw) (to-draw-y (page-y + by - bh)))
+                        box (as-pair (margin-left + ax + bx) (to-draw-y (page-y + by)))
+                             (as-pair (margin-left + ax + bx + bw) (to-draw-y (page-y + by - bh)))
                     ]
                 ]
-                draw-image-func (margin-left + ix) (page-y + iy) img-w img-h img-src
+                draw-image-func (margin-left + ax + ix) (page-y + iy) img-w img-h img-src
                 if img-cap [
-                    draw-styled-text margin-left (page-y - block-h - cap-h) img-cap bw "C" cap-styles
+                    draw-styled-text (margin-left + ax) (page-y - block-h - cap-h) img-cap bw "C" cap-styles
                 ]
                 ; make the whole image area a link/hint hotspot
                 if any [cap-info/6 cap-info/7] [
-                    left-a: margin-left + min bx ix
-                    right-a: margin-left + max (bx + bw) (ix + img-w)
+                    left-a: margin-left + ax + min bx ix
+                    right-a: margin-left + ax + max (bx + bw) (ix + img-w)
                     top-a: page-y + max by iy
                     bot-a: page-y + min (by - bh) (iy - img-h)
                     append/only hotspots make object! [
@@ -1213,7 +1221,7 @@ report-view: make report-styles [
         "Render an image row inside a column; returns the (uniform) row height consumed"
         x [integer!] y [integer!] row [object!] col-w [integer!] col-styles [block! none!] col-img-w [issue! none!] img-row-h [integer!]
         /local ia img-src img-obj ge block-h img-cap cap-h img-w img-h bw bh bx by ix iy base-color ci cap-styles
-               left-a right-a top-a bot-a ch cw asp inset shadow?
+               left-a right-a top-a bot-a ch cw asp inset shadow? align ax
     ][
         ia: parse-image-args row/args
         either all [not empty? ia ia/2][
@@ -1245,19 +1253,26 @@ report-view: make report-styles [
                 ge: image-geometry reduce [base-color inset shadow?] (min base-w col-w) asp ch
                 img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
                 bx: ge/5  by: ge/6  ix: ge/7  iy: ge/8  block-h: ge/9
+                ; horizontal placement within the column cell (see _emit-image)
+                ax: 0
+                align: ia/7
+                case [
+                    align = '^ [ax: max 0 (to integer! ((col-w - (min base-w col-w)) / 2))]
+                    align = '> [ax: max 0 (col-w - (min base-w col-w))]
+                ]
                 if base-color [
                     append page-draw compose [
                         fill-pen (base-color) pen off
-                        box (as-pair (x + bx) (to-draw-y (y + by)))
-                             (as-pair (x + bx + bw) (to-draw-y (y + by - bh)))
+                        box (as-pair (x + ax + bx) (to-draw-y (y + by)))
+                             (as-pair (x + ax + bx + bw) (to-draw-y (y + by - bh)))
                     ]
                 ]
-                draw-image-func (x + ix) (y + iy) img-w img-h img-src
-                if img-cap [draw-styled-text x (y - block-h - line-height) img-cap bw "C" cap-styles]
+                draw-image-func (x + ax + ix) (y + iy) img-w img-h img-src
+                if img-cap [draw-styled-text (x + ax) (y - block-h - line-height) img-cap bw "C" cap-styles]
                 ; make the whole image area a link/hint hotspot (adjusted by _emit-column afterwards)
                 if any [ci/6 ci/7] [
-                    left-a: x + min bx ix
-                    right-a: x + max (bx + bw) (ix + img-w)
+                    left-a: x + ax + min bx ix
+                    right-a: x + ax + max (bx + bw) (ix + img-w)
                     top-a: y + max by iy
                     bot-a: y + min (by - bh) (iy - img-h)
                     append/only hotspots make object! [
@@ -1486,7 +1501,7 @@ report-view: make report-styles [
         "Generate a multi-page report using draw dialect. Returns block of draw blocks."
         page-obj [object!] "Parsed page from parse-report"
         /local first-line first-sz line paper ascent lm dh y0 ww
-               hdr-ascent ftr-band hblk fblk a-h a-f hy
+               hdr-ascent ftr-band hblk fblk a-h a-f hy bg-env
     ][
         ; restore this report's base font (generate resets it at the end, so a
         ; later PDF pass would otherwise fall back to the default serif 12)
@@ -1573,10 +1588,24 @@ report-view: make report-styles [
         time-str: copy/part form now/time ((length? form now/time) - 3)
         datetime-str: rejoin [date-str " " time-str]
 
-        ; DRAW-BG: evaluate its parens once (page-width/height, margins are in scope)
+        ; DRAW-BG: evaluate its parens once (page-width/height, margins are in scope).
+        ; Bind to a dedicated env (like draw-env/frame-env) built from the *current*
+        ; page values: binding to the static report-view context read the default
+        ; margins whenever generate runs on a viewer instance (make report-view []),
+        ; which left DRAW-BG's margin-top/margin-left unadjusted in the View.
         bg-cmds: copy []
         if all [object? page-obj/draw-bg not empty? page-obj/draw-bg/lines][
-            bg-cmds: compose/deep bind copy page-obj/draw-bg/lines report-view
+            bg-env: make object! [
+                page-width: 100 page-height: 100
+                margin-left: 0 margin-right: 0 margin-top: 0 margin-bottom: 0
+            ]
+            set in bg-env 'page-width page-width
+            set in bg-env 'page-height page-height
+            set in bg-env 'margin-left margin-left
+            set in bg-env 'margin-right margin-right
+            set in bg-env 'margin-top margin-top
+            set in bg-env 'margin-bottom margin-bottom
+            bg-cmds: compose/deep bind copy page-obj/draw-bg/lines bg-env
             bg-cmds: report-styles/draw-load-images bg-cmds
         ]
 

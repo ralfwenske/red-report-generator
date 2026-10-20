@@ -13,21 +13,26 @@ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVW
 }
 
 report: compose/deep [
-    margin/20
+    a4 margin/20
     [HEADER [
         ["ACME Corp" [f1 red] "Quarterly Report" [f2]]
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]
+        []
     ]]
     [BODY [
         ["Landscape A5, 20 pt margins" [f2]]
         ["The paper clause comes first, before the items."]
         ["Try portrait, letter, or an explicit 600x800 pair."]
+        []
         [(text) ]
         [(text) [ss]]
         [(text) [m]]
         [(text) [b]]
         [(text) [ss b]]
         [(text) [m b]]
+        [(text) [i]]
+        [(text) [ss i]]
+        [(text) [m i]]
     ]]
     [FOOTER [
         ["Confidential" [b] "" "Page <page> of <pages>" [b]]
