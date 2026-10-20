@@ -29,8 +29,9 @@ report: [
 report: [ margin/10 left/30 right/15
     [DRAW-BG 3 [
         pen off
-        fill-pen coffee                         ; spine down the left edge
+        fill-pen red3                         ; spine down the left edge
         box 0x0 (as-pair 10 page-height)
+        box 0x0 (as-pair page-width 10)
     ]]  
     [HEADER [
         [[f3] "Red Report Generator"  "Complex Demo" (now/date) ]

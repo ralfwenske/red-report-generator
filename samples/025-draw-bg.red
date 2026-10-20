@@ -15,27 +15,27 @@ Red [
 ; (no GUI) omits the background.
 
 if exists? %samples/ [ change-dir %samples/ ]
+do load %../assets/color-tuples.red
 img: load %../assets/Red_Language_Tower_Logo.png 10x200
 
-report: [
-    [DRAW-BG 3 [
+report: [ top/80
+    [DRAW-BG 100 [
         pen off
-        fill-pen 238.242.255                          ; soft band across the top
-        box 0x0 (as-pair page-width 46)
-        fill-pen green                            ; spine down the left edge
-        box 0x46 (as-pair 6 page-height)
-        pen 205.210.225  line-width 1  fill-pen off     ; margin-aware inner frame
+        fill-pen green3                          ; soft band across the top
+        box 0x0 (as-pair page-width margin-top - 10)
+        fill-pen green3                            ; spine down the left edge
+        box (as-pair 0 margin-top - 10) (as-pair 6 (page-height))
+        pen 205.210.225  line-width 3  fill-pen off     ; margin-aware inner frame
         box (as-pair margin-left margin-top)
-            (as-pair page-width - margin-left - margin-right
-                     page-height - margin-top - margin-bottom)
+            (as-pair page-width - margin-right
+                     page-height - margin-bottom)
         pen 223.143.255
         anti-alias on ; this is the default
-        text 10x5 "With"
-        text 10x15 "anti-alias"
-        circle 40x50 20
-        ellipse 500x10 550x60
-        image img 510x10 560x60
-        image (load %../assets/Red_Language_Tower_Logo.png) 10x400
+        ;text 10x5 "With"
+        ;text 10x15 "anti-alias"
+        ;circle 40x50 20
+        ;ellipse 200x10 250x60
+        image img (as-pair (page-width / 2) - 25 10) (as-pair (page-width / 2) + 25 60)
     ]]
     [HEADER [
         ["Red Report Generator" [f1]]
@@ -44,9 +44,10 @@ report: [
         ["DRAW-BG demo" [f2]]
         ["The blue band, the left spine and the frame are one raw draw block."]
         ["It is painted once, on every page, behind the header and body text."]
-        [IMAGE px/400 %../assets/Red_Language_Tower_Logo.png ]
-        [pagebreak]
-        ["Second page" [f2]]
+        [IMAGE ^ px/400 %../assets/Red_Language_Tower_Logo.png ]
+        []
+        ["This logo appears only on this page" [m px/495 ^]] 
+        [PAGEBREAK]
         ["The same background appears again: DRAW-BG applies to all pages."]
     ]]
     [FOOTER [
@@ -56,5 +57,5 @@ report: [
 
 #include %../libs/report-view.red
 
-error-msg: show-report/fit-width report "025 — Draw background"
+error-msg: show-report/fit-width report "025 — Draw background %page-size%"
 if error-msg <> "" [alert error-msg]

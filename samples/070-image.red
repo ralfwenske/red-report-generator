@@ -20,29 +20,34 @@ Red [
 if exists? %samples/ [      ;make sure we are in the script directory
     change-dir %samples/
 ]
-report: [
+report: [top/20
+    [HEADER [ 
+       ["" "Images embedded" [f2 red4] "<page>"]
+       ["" (pad/with "" 60 #"_") [orange7] ""]
+       []
+    ]]
+    [FOOTER [ ["" (pad/with "" 60 #"_") [orange7] ""]]]
     [BODY [
         ["Intrinsic width; the caption defaults to the file name:" [f3]]
-        [IMAGE %../assets/Empress.jpg]
+        [IMAGE ^ %../assets/Empress.jpg]
 
-        ["Width as the first argument (bare number = px):" [f3]]
-        [IMAGE px/120 shadow/3 silver %../assets/Empress.jpg ["Empress" [link/1]]]
+        ["Width as the first argument :" [f3]]
+        [IMAGE < px/120 shadow/3 silver %../assets/Empress.jpg ["Empress" [link/1]]]
         [IMAGE px/200 border gold %../assets/Emperor.jpg ["Emperor" [link/2]]]
 
+        [IMAGE ^ px/350 border/2 silver %../assets/Magician.jpg [""]]
         ["No caption, just a frame:" [f3]]
         ["(automatic pagebreak as it is too tall for the page)" [f3]]
-        [IMAGE border/2 silver %../assets/Magician.jpg [""]]
-
+        [PAGEBREAK]
         ["A generated (in-memory) image — no file needed:" [f3]]
-        [IMAGE px/80 border/1 silver (make image! reduce [200x100 0.128.255]) ["generated" [b white green]]]
+        [IMAGE px/80 border/1 silver (make image! reduce [200x100 0.128.255]) ["generated" [b white green5]]]
+        []
+        ; Alignment: an IMAGE argument < (left, default), ^ (centre) or > (right)
+        [IMAGE < px/80 %../assets/Empress.jpg [""]]
+        [IMAGE ^ px/80 %../assets/Empress.jpg [""]]
+        [IMAGE > px/80 %../assets/Empress.jpg [""]]
 
-        ["Alignment: < left (default), ^ centre, > right — the token sits in the args:" [f3]]
-        [IMAGE < px/100 %../assets/Empress.jpg [""]]
-        [IMAGE ^ px/100 %../assets/Empress.jpg [""]]
-        [IMAGE > px/100 %../assets/Empress.jpg [""]]
-
-        ["Thumbnails (the COLUMN width also sizes the images):" [f3]]
-        [COLUMN px/60 gap-px/10 image [shadow/5 silver link/1 s/8][
+        [COLUMN px/80 gap-px/10 image [shadow/5 silver link/1 s/8][
             [IMAGE %../assets/Empress.jpg]
             [IMAGE %../assets/Chariot.jpg]
             [IMAGE %../assets/Emperor.jpg]
@@ -54,6 +59,8 @@ report: [
             [IMAGE %../assets/Magician.jpg]
             [IMAGE %../assets/Moon.jpg]
         ]]
+        []
+        ["Thumbnails (the COLUMN width also sizes the images):" [f3]]
     ]]
 ]
 

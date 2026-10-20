@@ -18,7 +18,7 @@ Red [
 if exists? %samples/ [ change-dir %samples/ ]
 img: load %../assets/Red_Language_Tower_Logo.png
 
-report: [ 800x900 margin/30
+report: [ margin/30
     [HEADER [["026 - Inline draw" [f2]]]]
     [BODY [
         ["This paragraph is framed by the DRAW that follows it: prev-* is its box." [b]]
@@ -33,15 +33,16 @@ report: [ 800x900 margin/30
         []
         ["A row of vector shapes is drawn at the cursor; the text follows underneath."]
         [DRAW 344 [
-            pen 0.0.160
-            fill-pen 235.242.255
+            pen blue8
+            fill-pen blue3
             line-width 2
             box (as-pair x y) (as-pair (x + 70) (y + 40)) 8
             circle (as-pair (x + 100) (y + 20)) 16
             line (as-pair (x + 130) y) (as-pair (x + 180) (y + 40))
             triangle (as-pair (x + 195) (y + 40)) (as-pair (x + 235) (y + 40)) (as-pair (x + 215) y)
-            pen off
-            fill-pen 255.215.0
+            line-width 5
+            pen yellow8
+            fill-pen yellow4
             polygon (as-pair (x + 250) (y + 40)) (as-pair (x + 270) y) (as-pair (x + 290) (y + 40))
             image img 100x200 400x500
         ]]

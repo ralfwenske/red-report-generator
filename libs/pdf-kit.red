@@ -151,6 +151,7 @@ pdf-kit: context [
     embed-image-bytes: func [
         "Embed an in-memory image! as a JPEG XObject, with an optional alpha SMask; returns its key (or none)."
         img [image!]
+        /check-alpha "Inspect image/argb for transparency (skip for formats without alpha, e.g. JPEG)"
         /local tmp jpg key argb a
     ][
         img-tmp: img-tmp + 1
@@ -162,28 +163,34 @@ pdf-kit: context [
         ; 4-byte-per-pixel buffer (image/argb, byte order B G R A); the alpha byte is
         ; the 4th. It travels to the PDF as a grayscale /SMask so the image
         ; composites over any backdrop. A fully opaque alpha is dropped (no SMask).
+        ; Scanning every image's ARGB buffer is expensive, so callers pass
+        ; /check-alpha only for formats that can carry alpha.
         a: none
-        argb: attempt [img/argb]
-        if argb [
-            a: extract/index argb 4 4
-            ; a fully opaque alpha needs no SMask
-            if parse a [some #{FF} end][a: none]
+        if check-alpha [
+            argb: attempt [img/argb]
+            if argb [
+                a: extract/index argb 4 4
+                ; a fully opaque alpha needs no SMask
+                if parse a [some #{FF} end][a: none]
+            ]
         ]
         key: to word! rejoin ["Im" (to integer! ((length? images) / 5)) + 1]
         append images reduce [key img/size/x img/size/y jpg a]
         key
     ]
 
-    embed-image: func [file [file!] /local img][
+    embed-image: func [file [file!] /local img alpha-ext?][
         img: attempt [load file]
         unless img [
             print rejoin ["Warning: cannot load image " file]
             return none
         ]
-        embed-image-bytes img
+        ; PNG/BMP/GIF may carry alpha; JPEG never does, so skip the ARGB scan.
+        alpha-ext?: find [".png" ".bmp" ".gif" ".webp"] lowercase form suffix? file
+        either alpha-ext? [embed-image-bytes/check-alpha img][embed-image-bytes img]
     ]
 
-    embed-image-value: func [img [image!]][embed-image-bytes img]
+    embed-image-value: func [img [image!]][embed-image-bytes/check-alpha img]
 
     image-dims: func [key [word!] /local pos][
         pos: find images key

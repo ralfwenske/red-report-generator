@@ -33,9 +33,9 @@ report: [a5 margin/20              ; A5 paper size 20px margins
         []
     ]]
 ]
-probe footer
-print []
-foreach itm report [print [] probe itm]
+;probe footer
+;print []
+;foreach itm report [print [] probe itm]
 
 #include %../libs/report-view.red
 log: show-report/fit-width report "007 Header %page-size%"

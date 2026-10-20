@@ -1,5 +1,5 @@
 Red [
-    Title: "110 - Table of contents"
+    Title: "100 - Table of contents"
     Demo:  "h1/h2/h3 mark TOC entries; [TOC [patterns]] expands after pagination"
     Level: 2
     Needs: 'View
@@ -46,7 +46,7 @@ report: [
         ["More text under the second background heading."]
 
         [FOOTER [
-            ["110 - toc" [i] "Methods" "Page <page> of <pages>"]
+            ["100 - toc" [i] "Methods" "Page <page> of <pages>"]
         ]]
         [PAGEBREAK]
         ["Methods" [h1]]
@@ -57,10 +57,10 @@ report: [
         ["A deeper heading, indented further in the contents."]
     ]]
     [FOOTER [
-        ["110 - toc" [i] "" "Page <page> of <pages>"]
+        ["100 - toc" [i] "" "Page <page> of <pages>"]
     ]]
 ]
 
 #include %../libs/report-view.red
-error-msg: show-report/fit-width report "110 - Table of contents"
+error-msg: show-report/fit-width report "100 - Table of contents"
 if error-msg <> "" [print error-msg]

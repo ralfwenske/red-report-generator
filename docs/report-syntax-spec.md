@@ -143,9 +143,10 @@ report-source/build-report: compose/deep [
   by both renderers (no raster, works headless), which is why it draws a restricted
   subset of the dialect.
 - **Composing the report.** No `compose/deep` is needed: `parse-report` composes the
-  template's parens for you, and DRAW-BG's (and DRAW's) ops block is deliberately left
-  uncomposed so its parens (`(as-pair page-width 56)`) are evaluated at **render** time
-  with the page geometry in scope (§11.1, §16.7).
+  template's parens for you, and the ops blocks of `DRAW-BG`/`DRAW`/`FRAME` are
+  deliberately left uncomposed so their parens (`(as-pair page-width 56)`,
+  `(as-pair x y)`) are evaluated at **render** time with the page/frame geometry in
+  scope (§11.1, §16.7). Pre-composing the report would evaluate them too early.
 
 `DRAW-BG` applies to all pages. To decorate a single page, draw oversized art on a
 one-page report (raw draw is not clipped to the text margins).
@@ -674,8 +675,12 @@ geometry and cursor in scope (§16.7).
 
 Notes:
 
-- Pre-composing with `compose/deep` yourself still works: with no parens left, the
-  parser's compose is a no-op, so both styles coexist.
+- Do **not** `compose/deep` the whole report yourself. It would also evaluate the
+  draw-ops parens of `DRAW`/`DRAW-BG`/`FRAME` (`(as-pair x y)`, `(as-pair page-width
+  margin-top)`) in the caller's context, where `x`/`y`/`margin-*`/`page-*` may not
+  exist yet — that is the `x has no value` error. Pass the literal report; the parser
+  composes the non-ops parts and defers the ops. If you must pre-compose, compose only
+  the parts that contain no draw ops.
 - Parens are evaluated at **parse time** in the calling context. Words the parens
   reference must be visible then — globals work; locals of an enclosing function do
   not (compose those yourself, or name the block; §16.7).
