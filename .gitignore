@@ -11,6 +11,8 @@ check-*.pdf
 
 # Variants saved by sampler (…-mod.red)
 samples/*-mod.red
+# …except the hidden template the sampler's "New Sample" button copies
+!samples/.000-template-mod.red
 
 # Local backups and stray outputs
 samples copy/
