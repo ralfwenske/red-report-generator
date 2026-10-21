@@ -46,95 +46,124 @@ get-samples
 
 error-popup: function [msg [string!]] [
     page: compose/deep [580x160 margin/10 [BODY [
-        ["Error:" [h2 red]]
-        [ (rejoin ["  " (msg) "  "]) [h3 white gray]]
+        ["Error:" [f2 red]]
+        [ (rejoin ["  " (msg) "  "]) [ black gray2]]
     ]]]
     show-popup "ERROR" page 400x80
+]
+
+; Handler bodies run inside the VID action blocks. Keep every variable local to a
+; named function: a bare `x: ...` in an action block sets a *global*, and a name
+; that collides with one used by a layout (e.g. the viewer's `p:` / `f`) can
+; corrupt the VID/View state so that later windows fail to build ("VID - invalid
+; syntax ...") until the process is reloaded. `function` auto-localises the
+; set-words, so `f`, `p`/`modfile`, `saved`, `result`, `num` … never leak.
+
+render-selected: func [/local saved f modfile result] [
+    ; run with cwd = the sample's directory so its %../libs and %../assets
+    ; relative paths resolve, then restore (like `do f`)
+    saved: what-dir
+    if modified [
+        f: to-string files/(list/selected)
+        ; if we are already editing a *-mod.red variant, save in place
+        modfile: either find f "-mod.red" [f][replace copy f ".red" "-mod.red"]
+        write to-file modfile editor/text
+        modified: false
+        get-samples
+        list/data: names
+        list/selected: index? find files to-file modfile
+    ]
+    show-status: ""
+    result: try [context load editor/text]
+    change-dir saved
+    either error? result [
+        error-popup form result
+    ][
+        if all [string? show-status show-status <> ""][error-popup show-status]
+    ]
+]
+
+select-item: func [/local f] [
+    f: to-file files/(list/selected)
+    editor/text: read f
+    modified: false
+    replace-btn/enabled?: find f "-mod.red"
+    editor/enabled?: find f "-mod.red"
+    modify-btn/enabled?: if (
+        (not find f "-mod.red") and
+        (not (exists? to-file replace f ".red" "-mod.red"))
+    ) [true] [false]
+]
+
+replace-original: func [/local f-mod f] [
+    f-mod: to-file files/(list/selected)
+    f: to-file replace files/(list/selected) "-mod" ""
+    write to-file f editor/text
+    delete f-mod
+    modified: false
+    get-samples
+    list/data: names
+    list/selected: find files f
+    editor/enabled?: false
+    replace-btn/enabled?: false
+]
+
+create-mod: func [/local selctd] [
+    write to-file replace files/(list/selected) ".red" "-mod.red" editor/text
+    selctd: list/selected
+    get-samples
+    list/data: names
+    list/selected: selctd
+    editor/enabled?: true
+    modify-btn/enabled?: false
+    replace-btn/enabled?: true
+]
+
+new-sample: func [/local num] [
+    num: 10 + to-integer first split last list/data #"-"
+    if num < 200 [num: 200]
+    editor/text: read %samples/.000-template-mod.red
+    replace editor/text "000 — Template" rejoin [to-string num " — My Sample"]
+    write to-file rejoin [%samples/ num "-mysample.red"] editor/text
+    write to-file rejoin [%samples/ num "-mysample-mod.red"] editor/text
+    get-samples
+    list/data: names
+    list/selected: index? find list/data rejoin [num "-mysample-mod.red"]
+    modified: false
+    editor/enabled?: true
+    replace-btn/enabled?: false
 ]
 
 view/flags [
     title "Report Generator Sampler"    
     size 950x740
-    backdrop silver
+    backdrop yellow2
 
     below
     h2 "Report Generator Sampler"
     h4 "Select a sample to show its source. Double-click code area to render it."
     h4 "A modified sample will be saved under <filename>-mod.red"
     h4 "so the original file is preserved"
-    panel 300x50 yellow [
-        button "Render Report" [
-            ; run with cwd = the sample's directory so its %../libs and
-            ; %../assets relative paths resolve, then restore (like `do f`)
-            saved: what-dir
-            if modified [ 
-                f: to-string files/(list/selected)
-                ; if we are already editing a *-mod.red variant, save in place
-                p: either find f "-mod.red" [f][replace copy f ".red" "-mod.red"]
-                write to-file p src/text
-                modified: false
-                get-samples
-                list/data: names
-                list/selected: index? find files to-file p
-            ]
-            show-status: ""
-            result: try [context load src/text]
-            change-dir saved
-            either error? result [
-                error-popup form result
-            ][
-                if all [string? show-status show-status <> ""][error-popup show-status]
-            ]
-
-        ]
-        replace-btn: button "Replace Original" disabled [
-            f-mod: to-file files/(list/selected)
-            f: to-file replace files/(list/selected) "-mod" ""
-            write to-file f src/text
-            delete f-mod
-            modified: false
-            get-samples
-            list/data: names
-            list/selected: find files f
-            src/enabled?: false
-            face/enabled?: false
-        ] 
-        modify-btn: button "Create -mod file" disabled [
-            write to-file replace files/(list/selected) ".red" "-mod.red" src/text
-            selctd: list/selected
-            get-samples
-            list/data: names
-            list/selected: selctd
-            src/enabled?: true
-            face/enabled?: false
-            replace-btn/enabled?: true
-        ]
-        ;button "Save Image" [ save/as %sampler2.jpg to-image face/parent/parent 'jpeg ]
+    panel 300x50 yellow3 [
+        button "Render Report" [render-selected]
+        replace-btn: button "Replace Original" disabled [replace-original]
+        modify-btn: button "Create -mod file" disabled [create-mod]
+        button "New Sample" [new-sample]
         button "Save Image" [ 
-            save/as %sampler2.png to-image face/parent/parent 'png 
+            save/as %sampler.png to-image face/parent/parent 'png 
         ]
         button "Quit"  [quit] 
             react [face/offset: face/parent/size - 70x40]
     ] react [face/size/x: face/parent/size/x - 20]
     across
     list: text-list 240x560 data names
-        on-select [
-            f: to-file files/(list/selected)
-            src/text: read f
-            modified: false
-            replace-btn/enabled?: find f "-mod.red"
-            src/enabled?: find f "-mod.red"
-            modify-btn/enabled?: if (
-                (not find f "-mod.red") and
-                (not (exists? to-file replace f ".red" "-mod.red"))
-            ) [true] [false]
-        ]
+        on-select [select-item]
         react [face/size/y: face/parent/size/y - 230]
 
-    src: area 660x560 disabled wrap silver font-name "Fixedsys" 
+    editor: area 660x560 disabled wrap gray3 font-name "Fixedsys" 
         on-key [modified: true]
-        react [src/size: (src/parent/size - 270x230) 
-            face/color: either face/enabled? [white][silver]
+        react [editor/size: (editor/parent/size - 270x230) 
+            face/color: either face/enabled? [white][gray3]
         ]
     return
 
@@ -142,7 +171,7 @@ view/flags [
     do [
         if not empty? names [
             list/selected: 2
-            src/text: read files/2
+            editor/text: read files/2
         ]
     ]
 ][resize]

@@ -43,10 +43,15 @@ change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning
 - **IMAGE**: `[IMAGE width? (shadow|border)(/N)? colour? (<|^|>)? source]` with source
   `file!`/`string!`/`image!`; the optional `< ^ >` aligns the image block within the
   content width (or column cell); caption style block is pure text styles.
+- **FRAME**: `[FRAME R [items] [draw-ops]]` — the **items block comes first** (it is
+  measured, then the backdrop is drawn behind it). Both renderers bind the ops to a
+  per-frame env (`x/y/w/h` = padded frame box, `cx/cy/cw/ch` = measured content box);
+  the ops' parens are evaluated at render time, so do not pre-compose the report.
 - **HEADER/FOOTER** contain text lines only. An in-body `HEADER`/`FOOTER` is a
   running override applied from the **next page onward**.
 - **Tokens**: `<page>`, `<pages>`, `<now>` (replaced in header/body/footer). Escape
-  a literal one with a backslash: `\<page>`, `\<now>`.
+  a literal one with a backslash: `\<page>`, `\<now>`. For generated text (e.g. a
+  `mold`ed source listing) apply that escaping yourself before using it as a value.
 - **TOC**: `[TOC [pattern lines]]`; `<hN>`/`<t-page>` placeholders; `link/toc` in a
   pattern style makes entries clickable (View-only jump).
 - **Metrics**: a line box is split into true ascent/descent with
@@ -54,11 +59,14 @@ change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning
   This is what keeps mixed font families on one baseline.
 - **PDF**: Base-14 fonts; links/hints, hotspots and `%page-size%` are View-only.
   Images are embedded as JPEG XObjects (lossy); transparency (e.g. RGBA PNGs) is
-  carried as a grayscale `/SMask`, fully opaque images get none.
+  carried as a grayscale `/SMask`, fully opaque images get none. `pdf-kit` only scans
+  `image/argb` for alpha when the source can carry it (in-memory `image!`,
+  PNG/BMP/GIF/WebP); JPEG skips the scan — keep it that way, scanning every image's
+  ARGB buffer triggers a Red runtime crash once enough images are embedded.
 
 ## Generated asset
 
-`samples/100-long-text.red` loads `assets/what-functions.txt`, a **single Red
+`samples/110-long-text.red` loads `assets/what-functions.txt`, a **single Red
 block** snapshot of Red's function list. It is session-independent on purpose
 (calling `what` at render time would list the sampler's globals and change the
 page count). Regenerate with the same build used to view:
@@ -78,6 +86,18 @@ it captures `what` before defining its helpers.
   `%../assets/...`.
 - `tests/check.red` stubs `show-report` (returns `""`) and `alert` (no-op), and
   evaluates each sample with the samples dir as cwd.
+- **Do not `compose/deep` the whole report.** `parse-report` already composes the
+  template's parens and deliberately defers `DRAW`/`DRAW-BG`/`FRAME` ops; pre-composing
+  evaluates the ops' parens (`(as-pair x y)`, `(as-pair page-width margin-top)`) in the
+  caller's context, where `x`/`y`/`margin-*`/`page-*` may not exist → “x has no value”.
+  Pass the literal block (spec §11.1).
+- `show-report` parses **twice** (validate, then render), so every paren runs twice:
+  keep builder functions pure and never return a shared literal block that you append
+  to — use `copy []` (`res: []` accumulates across calls and duplicates content).
+- The `\<` escape marker is stripped by `report-pdf/strip-escape-marker`, byte-aligned
+  and only inside `<hex>` text runs. Do not go back to
+  `replace/all content (pdf-kit/hex marker) ""`: that strips the literal characters
+  `01` from plain numbers too, corrupting any operand containing `01` (e.g. `px/101`).
 - Bare words are invalid as line values (except `none`); keywords are recognized
   only as the first element of a block.
 - The View renders each page at the display zoom and shows it 1:1; PDF parity is

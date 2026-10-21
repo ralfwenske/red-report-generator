@@ -306,7 +306,10 @@ boxes. No context has a default unit any more.
 - **Parens are evaluated at build time:** `(now)`, `(total)`, `(rejoin […])`.
   Inside raw-draw ops, parens are deferred and evaluated by the renderer (so `(load %x)`
   and `x`/`y` references work).
-- Use `compose/deep` to splice computed blocks (e.g. a generated list of rows).
+- Use `compose/deep` to splice a **computed value/block into an item** (e.g. a generated
+  list of rows), but do **not** `compose/deep` the **whole report**: it would evaluate the
+  `DRAW`/`DRAW-BG`/`FRAME` ops' parens (`(as-pair x y)`) early, where `x`/`y` don't exist
+  yet → `x has no value`. Pass the report block literally; `parse-report` composes it.
 - Unknown leading paper words and unknown style words fail `validate-report`.
 - A bare word used as a value is rejected (`none` is the exception).
 - `show-report` window title: put `%page-size%` where the page size should appear. It is

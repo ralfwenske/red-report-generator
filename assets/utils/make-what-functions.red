@@ -1,6 +1,6 @@
 Red [
     Title: "Generate what-functions.txt"
-    Demo:  "Snapshot Red's function list for samples/100-long-text.red"
+    Demo:  "Snapshot Red's function list for samples/110-long-text.red"
     Note:  {Run with the same Red/View build used to view the samples:
             red-view assets/utils/make-what-functions.red
             It writes assets/what-functions.txt next to this script.}

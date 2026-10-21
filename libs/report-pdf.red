@@ -1040,9 +1040,10 @@ report-pdf: make report-styles [
 
     strip-escape-marker: function [
         {Remove the \< escape marker byte (0x01) from <hex> text runs only.
-         Byte-aligned via debase/enbase: a plain decimal number such as `101`
-         contains the literal substring "01", so a whole-content replace/all would
-         corrupt every number whose hex-pair equals the marker.}
+         Byte-aligned via debase/enbase at base 16 (NOT the default base 64, which
+         would drop trailing chars of runs whose length isn't a multiple of 4, and
+         would corrupt the text). A plain decimal number such as `101` contains the
+         literal substring "01", so a whole-content replace/all is equally wrong.}
         s [string!]
         /local out run bin clean byte ch
     ][
@@ -1050,11 +1051,11 @@ report-pdf: make report-styles [
         parse s [
             any [
                 copy run [#"<" to #">" #">"] (
-                    bin: attempt [debase copy/part (at run 2) (length? run) - 2]
+                    bin: attempt [debase/base (copy/part (at run 2) ((length? run) - 2)) 16]
                     either bin [
                         clean: make binary! length? bin
                         foreach byte bin [unless byte = 1 [append clean byte]]
-                        append out rejoin ["<" enbase clean ">"]
+                        append out rejoin ["<" enbase/base clean 16 ">"]
                     ][
                         append out run
                     ]

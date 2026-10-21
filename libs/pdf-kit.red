@@ -207,6 +207,7 @@ pdf-kit: context [
         /local n m c0 i0 r0 f0 kids fonts-str imgs-str body out offs
         put-obj xref-off img-key img-w img-h img-bytes img-alpha content-len
         imgnums next-obj imgobj smobj smbody
+        i j f g0 objnum off
     ][
         n: length? pages
         m: to integer! ((length? images) / 5)
@@ -326,7 +327,7 @@ pdf-kit: context [
         xref-off: length? out
         append out to binary! rejoin ["xref" lf "0 " (to integer! ((length? offs) / 2)) + 1 lf]
         append out to binary! rejoin ["0000000000 65535 f " lf]
-        foreach [num off] offs [
+        foreach [objnum off] offs [
             append out to binary! rejoin [pad10 off " 00000 n " lf]
         ]
         append out to binary! rejoin [

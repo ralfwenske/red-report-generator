@@ -358,7 +358,7 @@ parse-section: func [
          (DRAW/DRAW-BG ops kept deferred), so a literal report needs no compose/deep.}
         page [block!]
         /local items h-args h-lines h-lines2 c-args c-lines f-args f-lines f-lines2 h-extra c-extra f-extra has-body bg-args bg-lines
-               size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right hs fs hst fst
+               size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right hs fs hst fst it
     ][
         ; evaluate the template's parens once (DRAW/DRAW-BG ops stay deferred)
         page: compose-report page
