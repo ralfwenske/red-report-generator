@@ -1816,9 +1816,9 @@ report-view: make report-styles [
                screen-to-page hit-test toc-target ensure-img scale-view update-buttons showpage
                display-title
                win btn-first btn-prev btn-next btn-last page-label fit-cb
-               clip-f img-f p parentsize vp-w vp-h iw ih
+               clip-f img-f p parentsize vp-w vp-h
                max-scroll delta page-pos new-hs hs pn target
-               zoom-pct last-pn last-zoom last-img pw ph ratio
+               render-pct last-pn last-zoom last-img pw ph ratio disp-w disp-h
     ][
         current-page: 1
         current-img: none
@@ -1905,24 +1905,26 @@ report-view: make report-styles [
             vp-h: parentsize/y - toolbar-h - 30
             if any [vp-w < 50 vp-h < 50][exit]
             clip-f/size: as-pair vp-w vp-h
-            ; Pick the zoom (%) that makes the page raster fit the viewport, render
-            ; the page at that zoom, then display 1:1 — a single resample, so photos
-            ; (and text) stay as sharp as the PDF, and resizing is smooth (1% steps).
+            ; Render the page at a *supersampled* resolution (up to 3x) and let
+            ; the face scale it down to the display size. Rendering at exactly the
+            ; display zoom and showing it 1:1 resamples embedded photos once at a
+            ; small scale, which looks soft; supersampling keeps images as sharp
+            ; as the PDF (and stays sharp when the window is resized).
             pw: sv-page-width  ph: sv-page-height
             ratio: either fit-width? [
                 vp-w / (pw * 1.0)
             ][
                 min (vp-w / (pw * 1.0)) (vp-h / (ph * 1.0))
             ]
-            zoom-pct: max 5 to integer! (ratio * 100)   ; floor: never overflows the viewport
-            ensure-img zoom-pct
-            iw: current-img/size/x
-            ih: current-img/size/y
+            disp-w: max 1 to integer! (pw * ratio)
+            disp-h: max 1 to integer! (ph * ratio)
+            render-pct: min 300 max 100 to integer! (ratio * 300)
+            ensure-img render-pct
             img-f/image: current-img
-            img-f/size: as-pair iw ih          ; 1:1 (no face resample)
-            max-scroll: max 0 ih - vp-h
+            img-f/size: as-pair disp-w disp-h
+            max-scroll: max 0 disp-h - vp-h
             scroll-y: max 0 min scroll-y max-scroll
-            img-f/offset: as-pair to integer! (vp-w - iw) / 2  (0 - scroll-y)
+            img-f/offset: as-pair to integer! (vp-w - disp-w) / 2  (0 - scroll-y)
         ]
 
         update-buttons: does [

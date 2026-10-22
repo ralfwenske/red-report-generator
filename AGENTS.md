@@ -10,7 +10,7 @@ View document and/or a PDF. No build step; run the scripts with Red.
 | `libs/report-parser.red` | parse + validate the report block into a page object |
 | `libs/report-styles.red` | shared style/word/metrics/INK helpers (base of both renderers) |
 | `libs/report-view.red` | Red/View renderer + viewer (hotspots, zoom, PDF button) |
-| `libs/report-pdf.red` | PDF renderer (Base-14 fonts, JPEG images + `/SMask` alpha) |
+| `libs/report-pdf.red` | PDF renderer (Base-14 fonts, JPEG or lossless Flate images + `/SMask` alpha) |
 | `libs/pdf-kit.red` | minimal PDF writer |
 | `samples/` | runnable demos and the `tests/check.red` fixtures |
 | `assets/` | images and the generated `what-functions.txt` snapshot |
@@ -58,8 +58,13 @@ change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning
   `report-styles/box-ascent-frac`; do not reintroduce “ascent = line-box height”.
   This is what keeps mixed font families on one baseline.
 - **PDF**: Base-14 fonts; links/hints, hotspots and `%page-size%` are View-only.
-  Images are embedded as JPEG XObjects (lossy); transparency (e.g. RGBA PNGs) is
-  carried as a grayscale `/SMask`, fully opaque images get none. `pdf-kit` only scans
+  Images are XObjects: `.jpg/.jpeg` as JPEG (`/DCTDecode`, lossy); PNG/BMP and
+  in-memory `image!` values losslessly as zlib `/FlateDecode` RGB (so screenshots,
+  text and diagrams stay sharp); `.gif/.webp` use JPEG. Lossless needs an image
+  width divisible by 4: Red's `image/rgb`/`argb` accessors shear rows when the
+  stride needs 4-byte padding, so unaligned widths fall back to JPEG. Transparency
+  is carried as a grayscale `/SMask` (also Flate), fully opaque images get none.
+  `pdf-kit` only scans
   `image/argb` for alpha when the source can carry it (in-memory `image!`,
   PNG/BMP/GIF/WebP); JPEG skips the scan — keep it that way, scanning every image's
   ARGB buffer triggers a Red runtime crash once enough images are embedded.

@@ -20,7 +20,7 @@ report-generator-2. A report is described by a single Red block; one parser
 renderers consume with identical results:
 
 - **View renderer** (`report-view.red`) — interactive, multi-page window using Red's `draw` dialect.
-- **PDF renderer** (`report-pdf.red`) — a self-contained PDF generator (JPEG image XObjects, embedded fonts, xref table).
+- **PDF renderer** (`report-pdf.red`) — a self-contained PDF generator (JPEG or lossless Flate image XObjects, embedded fonts, xref table).
 
 Design goals of the dialect:
 
@@ -319,11 +319,15 @@ line-item    := [ value style-block? value style-block? … ]
     applies to every contained image; uniform row height, captions default to the file name.
 - Height derives from the image's aspect ratio; the base extends the occupied height.
   Works in both renderers, including inside a `COLUMN`.
-- PDF output embeds images as **JPEG XObjects** (any loadable image is converted to
-  JPEG; the View renderer loads images natively; links/hints are View-only). JPEG
-  cannot carry alpha, so a transparent source (e.g. an RGBA PNG) also gets a
-  grayscale `/SMask` XObject and composites correctly over any backdrop; a fully
-  opaque image gets no SMask.
+- PDF output embeds raster images as XObjects: `.jpg/.jpeg` sources become **JPEG**
+  (`/DCTDecode`, lossy); PNG/BMP sources and in-memory `image!` values are stored
+  **losslessly** as zlib `/FlateDecode` RGB (so screenshots and diagrams stay
+  sharp); `.gif/.webp` use JPEG. Transparency is carried as a grayscale `/SMask`
+  XObject, so an RGBA source composites over any backdrop; a fully opaque image
+  gets none. A lossless image needs a width divisible by 4 (Red's image accessors
+  shear rows when the byte stride needs 4-byte padding); other widths still embed
+  correctly, but as JPEG. (The View renderer loads images natively; links/hints are
+  View-only.)
 
 ### 4.5 Page-break items
 
@@ -910,7 +914,7 @@ units, validation) were never in the draft.
 6. **Custom named colors must be global** — a color word defined inside the report
    object is not found by `resolve-colors`.
 7. **Section/TABLE style args now thread down** — `HEADER`/`BODY`/`FOOTER` and `TABLE` accept style words that inherit to every line/row/cell (per-value merge on top, `!X` cancels); only *non-style* section args (background, indent, column layout) are un-implemented.
-8. **PDF images are JPEG-only** — PNG/BMP sources are converted lossily to JPEG; a source with transparency also carries a grayscale `/SMask` so it composites over the backdrop.
+8. **PDF images** — `.jpg/.jpeg` stays JPEG (lossy); PNG/BMP and `image!` are lossless Flate RGB; a source with transparency also carries a grayscale `/SMask` so it composites over the backdrop.
 9. **Headings and font scale are hard-coded per renderer** — heading sizes 24/18/14 pt; `font-size 12` pt and `line-height 18` pt in both; View scales headings by `font-scale 0.82`, PDF by `1.0`.
 10. **`HEADER`/`FOOTER` accept text lines only** — `TABLE`/`COLUMN`/`IMAGE`/`DRAW` are
     not rendered there and are rejected by validation. Use `DRAW-BG` for a page-wide
@@ -1067,7 +1071,7 @@ Both renderers reproduce one restricted subset; anything else is rejected by
 Colors are solid RGB tuples or Red color words (`coffee`, `gold`, …); the PDF resolves
 named words the same way the View does, and `validate-report` **rejects an unknown
 word** (e.g. `rebeccapurple`) instead of silently painting nothing. The `image` command
-embeds as a JPEG XObject in the PDF (like `IMAGE` items). Not yet supported
+embeds as an image XObject in the PDF (JPEG for `.jpg` sources, lossless Flate otherwise), like `IMAGE` items. Not yet supported
 (validation error): `text`, gradients, `spline`/`arc`/`curve`/`dot`,
 `shape`/`draw` blocks, `clip`, `effect`, and any transform
 (`translate`/`scale`/`rotate`/`skew`/`matrix`).

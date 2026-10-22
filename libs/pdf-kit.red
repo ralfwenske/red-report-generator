@@ -149,48 +149,72 @@ pdf-kit: context [
     img-tmp: 0
 
     embed-image-bytes: func [
-        "Embed an in-memory image! as a JPEG XObject, with an optional alpha SMask; returns its key (or none)."
+        {Embed an in-memory image! as an XObject; returns its key.
+         Default = JPEG (/DCTDecode, lossy). /lossless stores raw RGB as zlib
+         (/FlateDecode), which keeps screenshots/text/diagrams sharp (PNG/BMP sources).
+         /check-alpha inspects image/argb and adds a grayscale /SMask when needed.}
         img [image!]
         /check-alpha "Inspect image/argb for transparency (skip for formats without alpha, e.g. JPEG)"
-        /local tmp jpg key argb a
+        /lossless "Store lossless Flate RGB instead of JPEG"
+        /local tmp data key argb a filter unaligned?
     ][
-        img-tmp: img-tmp + 1
-        tmp: to file! rejoin [what-dir %.img-tmp- img-tmp ".jpg"]
-        save/as tmp img 'jpeg
-        jpg: read/binary tmp
-        delete tmp
-        ; JPEG has no alpha channel. Red keeps transparency in the image's
-        ; 4-byte-per-pixel buffer (image/argb, byte order B G R A); the alpha byte is
-        ; the 4th. It travels to the PDF as a grayscale /SMask so the image
-        ; composites over any backdrop. A fully opaque alpha is dropped (no SMask).
-        ; Scanning every image's ARGB buffer is expensive, so callers pass
-        ; /check-alpha only for formats that can carry alpha.
+        ; Red's image/rgb and image/argb accessors return sheared rows when the
+        ; packed row stride (width*3 or width*4) needs padding to 4 bytes. A PNG
+        ; whose width isn't a multiple of 4 therefore decodes correctly in the
+        ; View but reads back garbage here. Fall back to JPEG (whose encoder uses
+        ; the correct internal stride) for such widths so the PDF is never sheared.
+        unaligned?: (img/size/x % 4) <> 0
+        either all [lossless not unaligned?] [
+            ; image/rgb = 3 bytes per pixel, lossless; zlib matches PDF /FlateDecode
+            data: compress img/rgb 'zlib
+            filter: 'flate
+        ][
+            img-tmp: img-tmp + 1
+            tmp: to file! rejoin [what-dir %.img-tmp- img-tmp ".jpg"]
+            save/as tmp img 'jpeg
+            data: read/binary tmp
+            delete tmp
+            filter: 'jpeg
+        ]
+        ; Red keeps transparency in the 4-byte-per-pixel buffer (image/argb, byte
+        ; order B G R A); the alpha byte is the 4th. It travels to the PDF as a
+        ; grayscale /SMask (also zlib-compressed). A fully opaque alpha is dropped.
+        ; Scanning the ARGB buffer is expensive, so callers pass /check-alpha only
+        ; for formats that can carry alpha. Skip it on unaligned widths (the
+        ; accessor is unreliable there).
         a: none
-        if check-alpha [
+        if all [check-alpha not unaligned?] [
             argb: attempt [img/argb]
             if argb [
                 a: extract/index argb 4 4
-                ; a fully opaque alpha needs no SMask
                 if parse a [some #{FF} end][a: none]
+                if a [a: compress a 'zlib]
             ]
         ]
-        key: to word! rejoin ["Im" (to integer! ((length? images) / 5)) + 1]
-        append images reduce [key img/size/x img/size/y jpg a]
+        key: to word! rejoin ["Im" (to integer! ((length? images) / 6)) + 1]
+        append images reduce [key img/size/x img/size/y data a filter]
         key
     ]
 
-    embed-image: func [file [file!] /local img alpha-ext?][
+    embed-image: func [file [file!] /local img ext alpha-ext? lossless?][
         img: attempt [load file]
         unless img [
             print rejoin ["Warning: cannot load image " file]
             return none
         ]
-        ; PNG/BMP/GIF may carry alpha; JPEG never does, so skip the ARGB scan.
-        alpha-ext?: find [".png" ".bmp" ".gif" ".webp"] lowercase form suffix? file
-        either alpha-ext? [embed-image-bytes/check-alpha img][embed-image-bytes img]
+        ext: lowercase form suffix? file
+        alpha-ext?: find [".png" ".bmp" ".gif" ".webp"] ext
+        ; PNG/BMP are lossless sources (screenshots, diagrams): keep them lossless.
+        lossless?: find [".png" ".bmp"] ext
+        case [
+            all [lossless? alpha-ext?] [embed-image-bytes/lossless/check-alpha img]
+            lossless? [embed-image-bytes/lossless img]
+            alpha-ext? [embed-image-bytes/check-alpha img]
+            true [embed-image-bytes img]
+        ]
     ]
 
-    embed-image-value: func [img [image!]][embed-image-bytes/check-alpha img]
+    embed-image-value: func [img [image!]][embed-image-bytes/lossless/check-alpha img]
 
     image-dims: func [key [word!] /local pos][
         pos: find images key
@@ -207,10 +231,10 @@ pdf-kit: context [
         /local n m c0 i0 r0 f0 kids fonts-str imgs-str body out offs
         put-obj xref-off img-key img-w img-h img-bytes img-alpha content-len
         imgnums next-obj imgobj smobj smbody
-        i j f g0 objnum off
+        i j f g0 objnum off img-filter
     ][
         n: length? pages
-        m: to integer! ((length? images) / 5)
+        m: to integer! ((length? images) / 6)
 
         ;-- object numbering: 1 catalog, 2 pages tree,
         ;-- then page dicts, then content streams, then images (plus an
@@ -225,7 +249,7 @@ pdf-kit: context [
             imgobj: next-obj
             next-obj: next-obj + 1
             smobj: none
-            if pick images ((j - 1) * 5) + 5 [
+            if pick images ((j - 1) * 6) + 5 [
                 smobj: next-obj
                 next-obj: next-obj + 1
             ]
@@ -273,18 +297,19 @@ pdf-kit: context [
 
         ;-- image XObjects (DCTDecode = raw JPEG bytes; optional /SMask for alpha)
         repeat j m [
-            img-key: pick images ((j - 1) * 5) + 1
-            img-w:   pick images ((j - 1) * 5) + 2
-            img-h:   pick images ((j - 1) * 5) + 3
-            img-bytes: pick images ((j - 1) * 5) + 4
-            img-alpha: pick images ((j - 1) * 5) + 5
+            img-key: pick images ((j - 1) * 6) + 1
+            img-w:   pick images ((j - 1) * 6) + 2
+            img-h:   pick images ((j - 1) * 6) + 3
+            img-bytes: pick images ((j - 1) * 6) + 4
+            img-alpha: pick images ((j - 1) * 6) + 5
+            img-filter: pick images ((j - 1) * 6) + 6
             imgobj: pick imgnums ((j - 1) * 2) + 1
             smobj:  pick imgnums ((j - 1) * 2) + 2
             body: make binary! 4096
             append body to binary! rejoin [
                 "<< /Type /XObject /Subtype /Image /Width " img-w
                 " /Height " img-h " /ColorSpace /DeviceRGB"
-                " /BitsPerComponent 8 /Filter /DCTDecode"
+                " /BitsPerComponent 8 " either img-filter = 'flate ["/Filter /FlateDecode"]["/Filter /DCTDecode"]
                 either smobj [rejoin [" /SMask " smobj " 0 R"]][""]
                 " /Length " (length? img-bytes) " >>" lf "stream" lf
             ]
@@ -296,7 +321,7 @@ pdf-kit: context [
                 append smbody to binary! rejoin [
                     "<< /Type /XObject /Subtype /Image /Width " img-w
                     " /Height " img-h " /ColorSpace /DeviceGray"
-                    " /BitsPerComponent 8 /Length " (length? img-alpha) " >>" lf "stream" lf
+                    " /BitsPerComponent 8 /Filter /FlateDecode /Length " (length? img-alpha) " >>" lf "stream" lf
                 ]
                 append smbody img-alpha
                 append smbody to binary! rejoin [lf "endstream"]
@@ -310,7 +335,7 @@ pdf-kit: context [
         imgs-str: copy ""
         repeat j m [
             append imgs-str rejoin [
-                "/" (pick images ((j - 1) * 5) + 1) " " (pick imgnums ((j - 1) * 2) + 1) " 0 R "
+                "/" (pick images ((j - 1) * 6) + 1) " " (pick imgnums ((j - 1) * 2) + 1) " 0 R "
             ]
         ]
         put-obj out offs r0 rejoin ["<< /Font << " fonts-str ">> /XObject << " imgs-str ">> >>"]
