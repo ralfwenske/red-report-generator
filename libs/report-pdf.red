@@ -1262,6 +1262,67 @@ report-pdf: make report-styles [
         ]
         img-row-h
     ]
+    emit-overlay-image: func [
+        {Emit an IMAGE inside an AT overlay at x,y (bottom-up), contained to w/avail-h.
+         No page break (the caller checks overflow); returns the consumed height.}
+        out [string!] line [object!] x [integer!] y [integer!] w [integer!] avail-h [integer!]
+        /local ia wsrc img ci img-cap cap-styles base-color inset shadow? decl-w asp cap-line cap-h
+               avail-w base-w iw ge block-h img-w img-h bw bh bx by ix iy ax align
+    ][
+        ia: parse-image-args line/args
+        unless all [not empty? ia ia/2][return 0]
+        wsrc: ia/2
+        img: either image? wsrc [wsrc][attempt [load wsrc]]
+        unless image? img [
+            print rejoin ["Warning: unsupported or unreadable image: " wsrc]
+            return 0
+        ]
+        ci: image-caption-info build-image-caption line none
+        img-cap: ci/1
+        cap-styles: ci/5
+        either ia/3 [
+            base-color: any [ia/5 get 'silver]
+            inset: ia/4
+            shadow?: ia/3 = 'shadow
+        ][
+            base-color: ci/2
+            inset: ci/3
+            shadow?: ci/4
+        ]
+        decl-w: image-declared-width ia ci
+        asp: to float! img/size/y / img/size/x
+        cap-line: either img-cap [reduce [reduce [img-cap cap-styles]]][copy []]
+        cap-h: either img-cap [line-advance cap-line :pdf-metrics][0]
+        avail-w: max 1 w
+        avail-h: max 1 (avail-h - line-height - cap-h)
+        base-w: either decl-w [width-to-px decl-w 'px][
+            iw: img/size/x
+            if img/size/y > avail-h [iw: max 1 (to integer! (avail-h / asp))]
+            if iw > avail-w [iw: avail-w]
+            if (to integer! (iw * asp)) > avail-h [iw: max 1 (to integer! (avail-h / asp))]
+            iw
+        ]
+        ge: image-geometry reduce [base-color inset shadow?] base-w asp avail-h
+        block-h: ge/9
+        img-w: ge/1  img-h: ge/2  bw: ge/3  bh: ge/4
+        bx: ge/5  by: ge/6  ix: ge/7  iy: ge/8
+        ax: 0
+        align: ia/7
+        case [
+            align = '^ [ax: max 0 (to integer! ((avail-w - base-w) / 2))]
+            align = '> [ax: max 0 (avail-w - base-w)]
+        ]
+        if base-color [
+            emit out [pdf-kit/rgb base-color " rg "
+                (pdf-kit/num (x + ax + bx)) " " (pdf-kit/num (y + by - bh)) " "
+                (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
+        ]
+        if emit-image out (x + ax + ix) (y + iy) img-w img-h wsrc [
+            if img-cap [emit-styled-text out (x + ax) (y - block-h - cap-h) img-cap bw "C" cap-styles]
+        ]
+        block-h + line-height + cap-h
+    ]
+
     ;=== Main entry point ===
 
     mk-hf: func [
@@ -1823,11 +1884,16 @@ report-pdf: make report-styles [
                         prev-line: none
                         prev-draw?: false
                         foreach at-item line/lines [
-                            at-lines: wrap-line at-item at-w :line-measure
-                            foreach l at-lines [
-                                if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
-                                render-pairs-line page-content l page-y
-                                prev-line: l
+                            either block? at-item [
+                                at-lines: wrap-line at-item at-w :line-measure
+                                foreach l at-lines [
+                                    if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
+                                    render-pairs-line page-content l page-y
+                                    prev-line: l
+                                ]
+                            ][
+                                at-used: emit-overlay-image page-content at-item margin-left page-y at-w (max 1 (page-y - page-bottom))
+                                page-y: page-y - at-used
                             ]
                         ]
                         if page-y < page-bottom [

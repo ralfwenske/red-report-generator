@@ -1176,7 +1176,7 @@ report-view: make report-styles [
                 ge: image-geometry reduce [base-color inset shadow?] base-w aspect avail-h
                 block-h: ge/9
                 ; if it does not fit this page, start a fresh page and re-size to its post-header area
-                if (page-y - block-h - line-height - cap-h) < page-bottom [
+                if all [not in-frame? ((page-y - block-h - line-height - cap-h) < page-bottom)] [
                     new-page
                     avail-h: max 1 (page-y - page-bottom - line-height - cap-h)
                     base-w: either decl-w [width-to-px decl-w 'px][
@@ -2018,7 +2018,7 @@ report-view: make report-styles [
 
         win: layout/flags  [
             title display-title
-            size 595x910
+            size 895x910
             backdrop 230.230.230
             style pg-btn: button 230.230.230 35x20 font [color: red] bold
             on-key [

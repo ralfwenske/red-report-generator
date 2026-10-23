@@ -1137,7 +1137,7 @@ Notes:
 
 ### 16.8 AT — an absolute page overlay
 
-`[AT x y [items]]` draws its `items` (BODY text lines) at an absolute page
+`[AT x y [items]]` draws its `items` (BODY text lines and/or `IMAGE` items) at an absolute page
 position: `(0,0)` is the **page's top-left**, independent of margins. It is an
 **overlay**: it does not move the flow cursor, does not update `prev-*`, and the
 flow continues as if the AT were not there. It cannot span a page break; its
@@ -1167,8 +1167,9 @@ The AT items wrap to `page-width - margin-right - x`.
 
 Notes:
 
-- AT is BODY-only; its items are text lines (v1) and cannot contain `PAGEBREAK` or
-  another `AT`; `AT` is not allowed inside `COLUMN` or `FRAME`.
+- AT is BODY-only; its items may be text lines or `IMAGE` items. They cannot
+  contain `DRAW`/`FRAME`/`TABLE`/`COLUMN`/`PAGEBREAK` or another `AT`; `AT` is not
+  allowed inside `COLUMN` or `FRAME`.
 - AT lands on the page the flow is on when the item is reached; a stamp placed after
   a page break lands on the later page.
 - `prev-*` resets at each page start and is never updated by `AT` itself.

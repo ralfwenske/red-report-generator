@@ -115,7 +115,7 @@ parse-section: func [
                                 inner: next inner
                                 break
                             ][
-                                append kw-args inner/1
+                                append kw-args norm-arg inner/1
                                 inner: next inner
                             ]
                         ][
@@ -124,7 +124,7 @@ parse-section: func [
                                 inner: next inner
                                 break
                             ][
-                                append kw-args inner/1
+                                append kw-args norm-arg inner/1
                                 inner: next inner
                             ]
                         ]
@@ -139,7 +139,7 @@ parse-section: func [
              ; by the renderer with the measured content box).
             if kw-type = 'frame [
                 while [all [not tail? inner not block? inner/1 not paren? inner/1]][
-                    append kw-args inner/1
+                    append kw-args norm-arg inner/1
                     inner: next inner
                 ]
                 if all [not tail? inner block? inner/1][
@@ -165,7 +165,7 @@ parse-section: func [
                 ]
                 unless at-args [
                     while [all [not tail? inner not block? inner/1]][
-                        append kw-args inner/1
+                        append kw-args norm-arg inner/1
                         inner: next inner
                     ]
                     at-args: copy kw-args
@@ -190,7 +190,7 @@ parse-section: func [
                         inner: next inner
                         break
                     ][
-                        append kw-args inner/1
+                        append kw-args norm-arg inner/1
                         inner: next inner
                     ]
                 ]
@@ -208,7 +208,7 @@ parse-section: func [
                         inner: next inner
                         break
                     ][
-                        append kw-args inner/1
+                        append kw-args norm-arg inner/1
                         inner: next inner
                     ]
                 ]
@@ -219,7 +219,7 @@ parse-section: func [
             ]
             ; args: values up to the first block or paren (the items block)
             while [all [not tail? inner not block? inner/1 not paren? inner/1]][
-                append kw-args inner/1
+                append kw-args norm-arg inner/1
                 inner: next inner
             ]
             ; content base = inherited base merged with this item's style args;
@@ -1183,11 +1183,30 @@ parse-section: func [
                                 return rejoin [sec-name " line " i ": AT has no items block"]
                             ]
                             foreach r ln/lines [
-                                unless block? r [
-                                    return rejoin [sec-name " line " i ": AT items must be text lines"]
+                                either block? r [
+                                    msg: check-line-styles sec-name i r
+                                    if msg [return msg]
+                                ][
+                                    unless all [object? r r/type = 'image] [
+                                        return rejoin [sec-name " line " i ": AT items may be text lines or IMAGE"]
+                                    ]
+                                    msg: schema-args-problem 'image r/args
+                                    if msg [return rejoin [sec-name " line " i ": " msg]]
+                                    if (length? r/lines) > 1 [
+                                        return rejoin [sec-name " line " i ": IMAGE takes at most one caption line"]
+                                    ]
+                                    if not empty? r/lines [
+                                        cap-line: r/lines/1
+                                        unless all [block? cap-line not empty? cap-line block? cap-line/1 not empty? cap-line/1] [
+                                            return rejoin [sec-name " line " i ": IMAGE caption must be a line like [Caption [styles]], got " mold cap-line]
+                                        ]
+                                        unless string? cap-line/1/1 [
+                                            return rejoin [sec-name " line " i ": IMAGE caption value must be a string, got " mold cap-line/1/1]
+                                        ]
+                                        msg: check-line-styles sec-name i cap-line
+                                        if msg [return msg]
+                                    ]
                                 ]
-                                msg: check-line-styles sec-name i r
-                                if msg [return msg]
                             ]
                         ]
                     ]

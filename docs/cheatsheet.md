@@ -71,7 +71,7 @@ Args are matched **by type, not position**; a modifier carries its optional valu
 | `PAGEBREAK` | `BODY`, `COLUMN`, `TABLE` rows | optional integer = reserve n lines | — |
 | `DRAW` | `BODY` | optional integer `H` (points consumed) | raw draw ops |
 | `FRAME` | `BODY` | optional integer padding | `[items]` then `[draw ops]` |
-| `AT` | `BODY` | `x y` (two expressions) or one pair — evaluated at render with `prev-*`/`page-*`/`cursor-*` | text lines (absolute overlay; flow does not advance) |
+| `AT` | `BODY` | `x y` (two expressions) or one pair — evaluated at render with `prev-*`/`page-*`/`cursor-*` | text lines / `IMAGE` (absolute overlay; flow does not advance) |
 | `TOC` | `BODY` | style words | pattern lines |
 
 Notes:
@@ -295,8 +295,9 @@ updated. Handy for asides and stamps:
 
 Coordinates are evaluated at render time with `prev-x/y/w/h`, `prev?`,
 `cursor-x/cursor-y`, `page-width/height`, `margin-*` and `content-width` available.
-Items wrap to `page-width - margin-right - x`. Text lines only; BODY only; no
-`PAGEBREAK` inside; not inside `COLUMN`/`FRAME`. On overflow you get a warning.
+Items wrap to `page-width - margin-right - x`. Text lines and `IMAGE` items; BODY
+only; no `PAGEBREAK` inside; not inside `COLUMN`/`FRAME`. Images never page-break
+(undeclared width is contained to the AT width). On overflow you get a warning.
 
 ---
 
