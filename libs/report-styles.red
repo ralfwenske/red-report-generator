@@ -2130,6 +2130,19 @@ report-styles: context [
         reduce [img-w img-h bw bh bx by ix iy block-h]
     ]
 
+    at-uses-prev?: func [
+        "True when an AT coordinate expression references any prev-* word."
+        b [series!]
+        /local r e
+    ][
+        r: false
+        foreach e b [
+            if all [word? e find [prev-x prev-y prev-w prev-h prev?] e][r: true]
+            if any [block? e paren? e][if at-uses-prev? e [r: true]]
+        ]
+        r
+    ]
+
     ;=== Predefined colour shades ==========================================
     ; 0 = lightest .. 9 = darkest, one row per family (gray red pink grape
     ; violet indigo blue cyan teal green lime yellow orange). This is the

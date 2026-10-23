@@ -71,6 +71,7 @@ Args are matched **by type, not position**; a modifier carries its optional valu
 | `PAGEBREAK` | `BODY`, `COLUMN`, `TABLE` rows | optional integer = reserve n lines | — |
 | `DRAW` | `BODY` | optional integer `H` (points consumed) | raw draw ops |
 | `FRAME` | `BODY` | optional integer padding | `[items]` then `[draw ops]` |
+| `AT` | `BODY` | `x y` (two expressions) or one pair — evaluated at render with `prev-*`/`page-*`/`cursor-*` | text lines (absolute overlay; flow does not advance) |
 | `TOC` | `BODY` | style words | pattern lines |
 
 Notes:
@@ -282,6 +283,21 @@ Allowed commands (anything else is rejected by validation for `DRAW`/`FRAME`):
 - Not supported: `text`, gradients, `spline/arc/curve/dot`, transforms, `clip`, `effect`.
 - `DRAW-BG` is rasterised for PDF (needs Red/View); under headless `red` it is omitted.
 
+**AT (absolute overlay).** `[AT x y [items]]` places text lines at page coordinates
+(top-left = `0x0`, margins ignored); the flow cursor does not move and `prev-*` is not
+updated. Handy for asides and stamps:
+
+```red
+[IMAGE px/180 %logo.png]
+[AT (prev-x + prev-w + 16) prev-y [["Beside the logo" [b]]]]
+[AT 20 20 [["TOP-LEFT" [f2 white red3]]]]
+```
+
+Coordinates are evaluated at render time with `prev-x/y/w/h`, `prev?`,
+`cursor-x/cursor-y`, `page-width/height`, `margin-*` and `content-width` available.
+Items wrap to `page-width - margin-right - x`. Text lines only; BODY only; no
+`PAGEBREAK` inside; not inside `COLUMN`/`FRAME`. On overflow you get a warning.
+
 ---
 
 ## 10. Units
@@ -308,7 +324,7 @@ boxes. No context has a default unit any more.
   and `x`/`y` references work).
 - Use `compose/deep` to splice a **computed value/block into an item** (e.g. a generated
   list of rows), but do **not** `compose/deep` the **whole report**: it would evaluate the
-  `DRAW`/`DRAW-BG`/`FRAME` ops' parens (`(as-pair x y)`) early, where `x`/`y` don't exist
+  `DRAW`/`DRAW-BG`/`FRAME` ops and `AT` coordinates (`(as-pair x y)`) early, where `x`/`y` don't exist
   yet → `x has no value`. Pass the report block literally; `parse-report` composes it.
 - Unknown leading paper words and unknown style words fail `validate-report`.
 - A bare word used as a value is rejected (`none` is the exception).

@@ -55,6 +55,7 @@ report-pdf: make report-styles [
     ; inline raw draw (BODY) state
     prev-draw?:             false
     prev-box:               none      ; [x y w h] draw-space box of the previous item
+    last-img-x: 0  last-img-w: 0      ; visual x/width of the last IMAGE (for prev-*)
     track-box?:             false
     box-min-x: none  box-min-y: none  box-max-x: none  box-max-y: none
 
@@ -478,6 +479,33 @@ report-pdf: make report-styles [
         set in e 'x fx  set in e 'y fy  set in e 'w fw  set in e 'h fh
         set in e 'cx cx  set in e 'cy cy  set in e 'cw cw  set in e 'ch ch
         set in e 'pad pad
+        e
+    ]
+
+    at-env: func [cursor-y [integer!] /local e][
+        e: make object! [
+            page-width: 100 page-height: 100
+            margin-left: 0 margin-right: 0 margin-top: 0 margin-bottom: 0
+            content-width: 0
+            prev-x: 0 prev-y: 0 prev-w: 0 prev-h: 0 prev?: false
+            cursor-x: 0 cursor-y: 0
+        ]
+        set in e 'page-width page-width
+        set in e 'page-height page-height
+        set in e 'margin-left margin-left
+        set in e 'margin-right margin-right
+        set in e 'margin-top margin-top
+        set in e 'margin-bottom margin-bottom
+        set in e 'content-width max 1 (page-width - margin-left - margin-right)
+        set in e 'cursor-x margin-left
+        set in e 'cursor-y cursor-y
+        if prev-box [
+            set in e 'prev-x prev-box/1
+            set in e 'prev-y prev-box/2
+            set in e 'prev-w prev-box/3
+            set in e 'prev-h prev-box/4
+            set in e 'prev? true
+        ]
         e
     ]
 
@@ -1411,7 +1439,7 @@ report-pdf: make report-styles [
                 ; step past the preceding text line box before stacking a block.
                 ; DRAW draws from its top, so it hugs the previous line
                 ; (descent + gap); other blocks use half the line box.
-                if all [prev-line not prev-draw?] [
+                if all [prev-line not prev-draw? not (all [object? line line/type = 'at])] [
                     lm: line-ink prev-line :pdf-metrics
                     page-y: page-y - either line/type = 'draw [
                         lm/3 + line-gap-px
@@ -1419,7 +1447,7 @@ report-pdf: make report-styles [
                         lm/2 + line-gap-px
                     ]
                 ]
-                prev-line: none
+                unless all [object? line line/type = 'at][prev-line: none]
                 y0: page-y
                 switch line/type [
                     table [
@@ -1549,6 +1577,7 @@ report-pdf: make report-styles [
                                         (pdf-kit/num bw) " " (pdf-kit/num bh) " re f"]
                                 ]
                                 emit-image page-content (margin-left + img-ax + ix) (page-y + iy) img-w img-h img-src
+                                last-img-x: margin-left + img-ax + ix  last-img-w: img-w
                                 if img-cap [
                                     emit-styled-text page-content (margin-left + img-ax) (page-y - block-h - cap-h) img-cap bw "C" cap-styles
                                 ]
@@ -1769,13 +1798,55 @@ report-pdf: make report-styles [
                         prev-draw?: true
                         prev-line: copy []
                     ]
+                    at [
+                        ; absolute, single-page text overlay: coordinates are evaluated
+                        ; with page-*/prev-*/cursor-* in scope; no flow advance, no break.
+                        atenv: at-env (page-height - page-y)
+                        if all [not get in self 'prev-box  report-styles/at-uses-prev? line/args][
+                            cause-error 'script 'invalid-arg "AT references prev-* but there is no previous element on this page"
+                        ]
+                        at-av: reduce bind copy line/args atenv
+                        either all [(1 = length? at-av) pair? at-av/1][
+                            at-x: at-av/1/x  at-y: at-av/1/y
+                        ][
+                            at-x: at-av/1  at-y: at-av/2
+                        ]
+                        unless all [integer? at-x  integer? at-y][
+                            cause-error 'script 'invalid-arg "AT coordinates must be integers or a pair"
+                        ]
+                        at-w: max 1 (page-width - margin-right - at-x)
+                        at-saved-y: page-y  at-saved-ml: margin-left  at-saved-ww: ww
+                        at-saved-prev-line: prev-line  at-saved-prev-box: get in self 'prev-box  at-saved-prev-draw: prev-draw?
+                        set in self 'margin-left at-x
+                        ww: at-w
+                        page-y: page-height - at-y - ascent
+                        prev-line: none
+                        prev-draw?: false
+                        foreach at-item line/lines [
+                            at-lines: wrap-line at-item at-w :line-measure
+                            foreach l at-lines [
+                                if prev-line [page-y: page-y - line-step l prev-line :pdf-metrics]
+                                render-pairs-line page-content l page-y
+                                prev-line: l
+                            ]
+                        ]
+                        if page-y < page-bottom [
+                            print rejoin ["Warning: AT at " at-x "x" at-y " overflows the page"]
+                        ]
+                        page-y: at-saved-y  set in self 'margin-left at-saved-ml  ww: at-saved-ww
+                        prev-line: at-saved-prev-line  set in self 'prev-box at-saved-prev-box  prev-draw?: at-saved-prev-draw
+                    ]
                 ]
                 ; a PAGEBREAK already started a new page and set prev-line to the
                 ; last header line; keep it so the next text steps below the header
-                unless any [line/type = 'frame  line/type = 'pagebreak][
+                unless any [line/type = 'frame  line/type = 'pagebreak  line/type = 'at][
                     prev-draw?: line/type = 'draw
                     ; record the item's box for a following DRAW's prev-* words
-                    box-note margin-left (page-height - y0) (margin-left + ww) (page-height - page-y)
+                    either line/type = 'image [
+                        box-note last-img-x (page-height - y0) (last-img-x + last-img-w) (page-height - page-y)
+                    ][
+                        box-note margin-left (page-height - y0) (margin-left + ww) (page-height - page-y)
+                    ]
                     ; after a DRAW leave a zero-descent marker so the next text line
                     ; steps below the art (a following block skips the step)
                     either prev-draw? [prev-line: copy []][prev-line: none]
@@ -1804,7 +1875,7 @@ report-pdf: make report-styles [
                     prev-draw?: false
                 ]
             ]
-            unless all [object? line  line/type = 'frame][box-finish]
+            unless all [object? line  any [line/type = 'frame  line/type = 'at]][box-finish]
         ]
 
         append pages page-content

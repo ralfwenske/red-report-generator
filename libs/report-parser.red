@@ -45,7 +45,7 @@ parse-pairs: func [
     result
 ]
 
-known-keywords: [header body footer table image column pagebreak draw-bg draw frame toc]
+known-keywords: [header body footer table image column pagebreak draw-bg draw frame toc at]
 paper-sizes:    [a4 letter legal a3 a5]
 margin-sides:   [top bottom left right margin]
 
@@ -154,6 +154,31 @@ parse-section: func [
                 pos: next pos
                 continue
             ]
+            ; AT: [AT x y [items]] — absolute, single-page overlay. The coordinate
+            ; expressions were stashed by protect-at and are evaluated by the
+            ; renderer with prev-*/cursor-*/page-* in scope; the items are text lines.
+            if kw-type = 'at [
+                at-args: none
+                if all [not tail? inner block? inner/1][
+                    at-args: copy inner/1
+                    inner: next inner
+                ]
+                unless at-args [
+                    while [all [not tail? inner not block? inner/1]][
+                        append kw-args inner/1
+                        inner: next inner
+                    ]
+                    at-args: copy kw-args
+                ]
+                if all [not tail? inner block? inner/1][
+                    at-items: copy inner/1
+                    inner: next inner
+                ]
+                body: either at-items [parse-section/base at-items bs][copy []]
+                append/only result object [type: kw-type args: at-args img: none lines: body]
+                pos: next pos
+                continue
+            ]
             ; DRAW-BG: optional integer pixel-density arg, then ONE raw draw block.
             ; The block may also be given by name — a word bound to a block — which
             ; lets a report built with compose/deep keep the draw ops (and their
@@ -258,6 +283,40 @@ parse-section: func [
         all [not empty? b  word? b/1  (to word! b/1) = 'frame]
     ]
 
+    at-item-block?: func [b [block!]][
+        all [not empty? b  word? b/1  (to word! b/1) = 'at]
+    ]
+
+    protect-at: func [
+        {Stash an AT's coordinate expressions so compose/deep skips them (they are
+         evaluated at render time, where prev-*/cursor-*/page-* exist); leave the
+         items block for normal composition. Normalises the item to
+         [AT [coord-exprs] [items]].}
+        e [block!] stashed [block!]
+        /local out args i
+    ][
+        out: copy [at]
+        args: copy []
+        i: next e
+        while [all [not tail? i  not block? i/1]][
+            append/only args either series? i/1 [copy/deep i/1][i/1]
+            i: next i
+        ]
+        append/only stashed args
+        append out to word! rejoin ["__draw-marker-" length? stashed]
+        either all [not tail? i  block? i/1][
+            append/only out defer-draws i/1 stashed
+            i: next i
+        ][
+            append/only out copy []
+        ]
+        while [not tail? i][
+            either block? i/1 [append/only out defer-draws i/1 stashed][append/only out i/1]
+            i: next i
+        ]
+        out
+    ]
+
     norm-arg: func [
         {Normalise a qualified argument: a 2-component path base/value is turned into
          the equivalent dash word for the internal vocabulary (ss/10 -> ss-10,
@@ -312,6 +371,9 @@ parse-section: func [
                 ]
                 all [block? e  frame-item-block? e][
                     append/only out protect-frame e stashed
+                ]
+                all [block? e  at-item-block? e][
+                    append/only out protect-at e stashed
                 ]
                 block? e [append/only out defer-draws e stashed]
                 true [append/only out either path? e [norm-arg e][e]]
@@ -556,7 +618,7 @@ parse-section: func [
     item-schema: [
         header    [[style]              []]
         footer    [[style]              []]
-        body      [[style]              [table image column pagebreak draw frame header footer toc]]
+        body      [[style]              [table image column pagebreak draw frame header footer toc at]]
         table     [[modifier style]     []]
         column    [[width width style]  [image pagebreak]]
         image     [[width file]         []]
@@ -565,6 +627,7 @@ parse-section: func [
         frame     [[integer]            []]
         pagebreak [[integer]            []]
         toc       [[style]              []]
+        at        [[integer integer]     []]
     ]
 
     width-atom?: func [
@@ -827,7 +890,7 @@ parse-section: func [
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a bg parsed w sch2 x2 k l2 j cap-line wl dash
+        /local err pg msg ln i row a bg parsed w sch2 x2 k l2 j cap-line wl dash r sec-name sec sec-kw
     ][
         ;--- Legacy dash notation is rejected: use paths (ss/8, px/80, margin/10) ---
         dash: legacy-dash-problem page
@@ -1099,6 +1162,29 @@ parse-section: func [
                             foreach r ln/lines [
                                 unless block? r [
                                     return rejoin [sec-name " line " i ": FRAME items must be text lines"]
+                                ]
+                                msg: check-line-styles sec-name i r
+                                if msg [return msg]
+                            ]
+                        ]
+                        at [
+                            unless sec-name = "BODY" [
+                                return rejoin [sec-name " line " i ": AT is only supported inside BODY"]
+                            ]
+                            unless all [1 <= length? ln/args  2 >= length? ln/args] [
+                                return rejoin [sec-name " line " i ": AT takes x y (or one pair): [AT x y [items]]"]
+                            ]
+                            foreach a ln/args [
+                                unless any [integer? a  pair? a  paren? a  word? a] [
+                                    return rejoin [sec-name " line " i ": AT coordinates must be integers, a pair, or expressions"]
+                                ]
+                            ]
+                            if empty? ln/lines [
+                                return rejoin [sec-name " line " i ": AT has no items block"]
+                            ]
+                            foreach r ln/lines [
+                                unless block? r [
+                                    return rejoin [sec-name " line " i ": AT items must be text lines"]
                                 ]
                                 msg: check-line-styles sec-name i r
                                 if msg [return msg]

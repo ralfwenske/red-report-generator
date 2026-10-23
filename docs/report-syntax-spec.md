@@ -143,7 +143,8 @@ report-source/build-report: compose/deep [
   by both renderers (no raster, works headless), which is why it draws a restricted
   subset of the dialect.
 - **Composing the report.** No `compose/deep` is needed: `parse-report` composes the
-  template's parens for you, and the ops blocks of `DRAW-BG`/`DRAW`/`FRAME` are
+  template's parens for you, and the ops blocks of `DRAW-BG`/`DRAW`/`FRAME` (plus
+  `AT` coordinates) are
   deliberately left uncomposed so their parens (`(as-pair page-width 56)`,
   `(as-pair x y)`) are evaluated at **render** time with the page/frame geometry in
   scope (§11.1, §16.7). Pre-composing the report would evaluate them too early.
@@ -160,7 +161,7 @@ makes it a keyword item, anything else makes it a *line*:
 item        := keyword-item | line-item
 
 keyword-item := [ known-word args… [items]? ]   ; trailing items block optional
-known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK | DRAW | FRAME | TOC
+known-word   := HEADER | BODY | FOOTER | TABLE | COLUMN | IMAGE | PAGEBREAK | DRAW | FRAME | TOC | AT
 args         := values up to the first block (words, numbers, files, issues, …)
 
 line-item    := [ value style-block? value style-block? … ]
@@ -1134,7 +1135,47 @@ Notes:
   content continues below the frame; `prev-*` for a following DRAW is the padded box.
 - On overflow it restarts on a fresh page (View and PDF).
 
-### 16.8 Parens, `compose/deep`, and DRAW
+### 16.8 AT — an absolute page overlay
+
+`[AT x y [items]]` draws its `items` (BODY text lines) at an absolute page
+position: `(0,0)` is the **page's top-left**, independent of margins. It is an
+**overlay**: it does not move the flow cursor, does not update `prev-*`, and the
+flow continues as if the AT were not there. It cannot span a page break; its
+contents must fit on the current page (an overflow warning is printed).
+
+Coordinates are evaluated at **render** time, so `prev-*` and the page/cursor words
+are available:
+
+```red
+[IMAGE px/180 %logo.png]
+[AT (prev-x + prev-w + 16) prev-y [
+    ["Text beside the logo" [b]]
+    ["AT is an overlay; the flow continues below the image." [m]]
+]]
+[AT 20 20 [["TOP-LEFT" [f2 white red3]]]]        ; a stamp
+```
+
+Bound words in the coordinate expressions (page/draw space, top-down):
+
+- `prev-x prev-y prev-w prev-h` — the box of the previous **flow** item on this page
+  (`prev?` is false if there is none; using `prev-*` then is an error)
+- `page-width page-height`, `margin-left/right/top/bottom`, `content-width`
+- `cursor-x cursor-y` — where the next flow item would go
+
+`x`/`y` may be two integer expressions or one pair, e.g. `[AT (as-pair 20 30) [...]]`.
+The AT items wrap to `page-width - margin-right - x`.
+
+Notes:
+
+- AT is BODY-only; its items are text lines (v1) and cannot contain `PAGEBREAK` or
+  another `AT`; `AT` is not allowed inside `COLUMN` or `FRAME`.
+- AT lands on the page the flow is on when the item is reached; a stamp placed after
+  a page break lands on the later page.
+- `prev-*` resets at each page start and is never updated by `AT` itself.
+- Use `AT` for logos/stamps/asides. Content that should reserve space belongs in the
+  normal flow (or `FRAME`).
+
+### 16.9 Parens, `compose/deep`, and DRAW
 
 DRAW and DRAW-BG parens are evaluated at **render** time, with the page geometry in
 scope (`page-width`, `page-height`, `margin-*`, and for DRAW the cursor/`prev-*`

@@ -133,17 +133,21 @@ new-sample: func [/local num] [
     editor/enabled?: true
     replace-btn/enabled?: false
 ]
-
-view/flags [
+system/view/capturing?: yes
+view/flags layout [
+    ;on-detect [
+    ;    if event/type = 'dbl-click [
+    ;        render-selected
+    ;    ]
+    ;]
     title "Report Generator Sampler"    
     size 950x740
     backdrop yellow2
-
     below
     h2 "Report Generator Sampler"
-    h4 "Select a sample to show its source. Double-click code area to render it."
+    h4 "Select a sample to show its source. Double-click it to render."
     h4 "A modified sample will be saved under <filename>-mod.red"
-    h4 "so the original file is preserved"
+    h4 "so the original file is preserved until you replace it"
     panel 300x50 yellow3 [
         button "Render Report" [render-selected]
         replace-btn: button "Replace Original" disabled [replace-original]
@@ -158,6 +162,7 @@ view/flags [
     across
     list: text-list 240x560 data names
         on-select [select-item]
+        on-dbl-click [render-selected]
         react [face/size/y: face/parent/size/y - 230]
 
     editor: area 660x560 disabled wrap gray3 font-name "Fixedsys" 
@@ -165,6 +170,7 @@ view/flags [
         react [editor/size: (editor/parent/size - 270x230) 
             face/color: either face/enabled? [white][gray3]
         ]
+
     return
 
 
@@ -174,4 +180,4 @@ view/flags [
             editor/text: read files/2
         ]
     ]
-][resize]
+][resize all-over]

@@ -47,6 +47,11 @@ change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning
   measured, then the backdrop is drawn behind it). Both renderers bind the ops to a
   per-frame env (`x/y/w/h` = padded frame box, `cx/cy/cw/ch` = measured content box);
   the ops' parens are evaluated at render time, so do not pre-compose the report.
+- **AT**: `[AT x y [items]]` is an absolute, single-page **overlay** (origin = page
+  top-left). Coordinates are deferred to render time with `prev-*`, `cursor-*` and
+  `page-*` in scope (two expressions or one pair). AT does not advance the flow or
+  update `prev-*`; items are text lines only (no PAGEBREAK/nested AT), BODY-only,
+  and not allowed inside COLUMN/FRAME.
 - **HEADER/FOOTER** contain text lines only. An in-body `HEADER`/`FOOTER` is a
   running override applied from the **next page onward**.
 - **Tokens**: `<page>`, `<pages>`, `<now>` (replaced in header/body/footer). Escape
