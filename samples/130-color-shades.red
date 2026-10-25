@@ -54,8 +54,7 @@ report: [a4 landscape margin/20
         [AT (prev-x + prev-w + 5) (prev-y - 20) [
             [IMAGE px/400 %../assets/130-color-shades-2.png [""]]
         ]]
-        [[i] {NOTE: these two images are raster screenshots. At "Fit Width" the page is scaled below 100% and GTK resamples the bitmaps (Red's DRAW exposes no image filter; see Red issue #4729). They therefore look softer than the vector text. 
-The PDF embeds the full-resolution image; view at 100% or more to judge the image sharpness itself.}
+        [[i] {NOTE: these are 743x756 and 847x791 px screenshots placed at px/380 and px/400 (half size) so both fit one page. At that size the code text is ~6 px tall and soft; use near-native width (one per page, e.g. no width or px/800) for the sharpness of the source. Red's DRAW has no image filter (Red issue #4729), but the display size, not the filter, dominates here.}
         ]
         [FOOTER [
             ["Page <page> of <pages>" [f3] "color for any red app" [f2] (now) [date]]

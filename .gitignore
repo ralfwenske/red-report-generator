@@ -17,3 +17,7 @@ samples/*-mod.red
 # Local backups and stray outputs
 samples copy/
 *.pdf
+
+# macOS metadata
+.DS_Store
+._*

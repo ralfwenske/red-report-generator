@@ -161,7 +161,8 @@ view/flags layout [
     ] react [face/size/x: face/parent/size/x - 20]
     across
     list: text-list 240x560 data names
-        on-select [select-item]
+        ;on-select [select-item]
+        on-change [select-item]
         on-dbl-click [render-selected]
         react [face/size/y: face/parent/size/y - 230]
 
