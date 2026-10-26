@@ -27,12 +27,20 @@ sample file as `%../assets/<name>.jpg`.
 
 ## View and PDF parity
 
-The two renderers aim to look the same (same nominal sizes, metric-compatible faces,
-and matched wrap points), tuned per family via `report-view/font-scale-*` and
-`report-pdf/font-scale-*` (see the spec, §12). Serif and sans-serif glyphs vary in
-width, so a perfect match is not possible for them. **For the closest match, use the
-mono family (`m`)**: its fixed advance makes widths — and therefore line breaks —
-line up between View and PDF.
+The two renderers aim to look the same. Faces and PDF parity scales are selected
+per `system/platform` (see the spec, §12):
+
+- **Windows**: Times New Roman / Arial / Courier New.
+- **Linux / macOS**: Times New Roman / Helvetica / Courier.
+
+Windows body text is calibrated with `red-view tests/metrics-probe.red`, which
+writes `tests/metrics-probe.txt`. Serif and sans glyphs still vary in width, so a
+perfect match is not possible. **For the closest match, use the mono family (`m`)**:
+its fixed advance makes widths — and therefore line breaks — line up between View
+and PDF. PDF glyphs are drawn at the View's 96 dpi size with a horizontal `Tz`
+compensation, so glyph height and advance width are matched separately. On
+Windows the View draw shaper advances mixed text ~3.5% wider than `size-text`;
+that factor is applied to both the View measurement and the PDF advances.
 
 ## Raw page backgrounds
 
@@ -46,7 +54,12 @@ background (and warns). An optional integer sets the PDF pixel density (1–8).
 ```bash
 red tests/check.red          # parse + validate every sample (headless)
 red tests/check.red --pdf    # also render each sample to a temp PDF
+red tests/check.red --pdf --only 110-long-text.red   # isolate one sample
+red-view tests/parity-pages.red 010-hello.red        # View vs PDF page count
 ```
+
+Use a current Red build for both `red` and `red-view`. An older 0.6.6 x86
+`red-view` could leave the `110-long-text` viewer blank; the current build fixes it.
 
 ## Layout
 

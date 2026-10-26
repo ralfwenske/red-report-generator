@@ -21,19 +21,20 @@ Red [
 report-view: make report-styles [
     ;=== Draw-specific typography ===
 
-    ; Familys chosen to match the PDF's Base-14 faces (metric clones on most
-    ; systems): Times New Roman / Helvetica / Courier.
+    ; Faces chosen to match the PDF's Base-14 faces. Windows has no Helvetica,
+    ; but Arial is metric-compatible with it; Courier New is the Courier clone.
+    ; Other platforms keep the original Helvetica/Courier requests.
     font-face-serif: "Times New Roman"
-    font-face-sans:  "Helvetica"
-    font-face-mono:  "Courier"
+    font-face-sans:  either report-styles/platform = to-word "Windows" ["Arial"] ["Helvetica"]
+    font-face-mono:  either report-styles/platform = to-word "Windows" ["Courier New"] ["Courier"]
 
-    ; Per-family multipliers on every font size; sizes are rounded to whole
-    ; points (GTK renders whole-point sizes only). The View measures ~1.3x wider
-    ; per point than the PDF and the three faces differ slightly, so each family
-    ; is tuned separately to match the PDF's serif/sans/mono.
-    font-scale-serif:  1 ; 0.84
-    font-scale-sans:   1 ; 0.84
-    font-scale-mono:   1 ; 0.84
+    ; Per-family multipliers on every font size; Red View sizes are whole
+    ; points. The View measures ~1.3x wider per point than the PDF and the three
+    ; faces differ slightly, so each family is tuned separately to match the
+    ; PDF's serif/sans/mono.
+    font-scale-serif:  1
+    font-scale-sans:   1
+    font-scale-mono:   1
 
     ;=== Draw-specific state ===
 
@@ -51,6 +52,7 @@ report-view: make report-styles [
     ; Layout state shared with _emit-* functions
     usable-top: 0
     page-bottom: 0
+    content-w: 0
 
     ;=== Report generation state (context-level so _emit-* can access) ===
 
@@ -215,7 +217,21 @@ report-view: make report-styles [
         ]
         sz: font-size-for styles
         either any-style? [set-font styles sz][set-font [] font-size]
-        h: to integer! second size-text/with measure-face "hg"   ; line box: ascender + descender
+        ; On Windows and macOS, use the PDF's per-size line box so both
+        ; renderers share one vertical grid. The PDF line-scale table is
+        ; calibrated against the View's measured boxes (the base size dominates);
+        ; at other sizes a raw OS box can round a pixel taller (e.g. m/9: View
+        ; 15 vs PDF 14) and accumulate into different page breaks. Linux keeps
+        ; the measured OS box (the original calibration); widths always come
+        ; from the OS font.
+        h: either any [
+            platform = to-word "Windows"
+            platform = to-word "macOS"
+        ][
+            to integer! round (sz * report-pdf/font-line-scale-for styles)
+        ][
+            to integer! second size-text/with measure-face "hg"
+        ]
         ; Red's `size-text` reports the whole line box, not the ascender. The draw
         ; engine puts the baseline at `y + ascender`, so split the box by the
         ; family's ascender fraction; otherwise mixed families land a different
@@ -229,7 +245,7 @@ report-view: make report-styles [
             adv: measure-text "M"
             w: (length? text) * adv
         ][
-            w: measure-text text
+            w: to integer! round ((measure-text text) * view-width-factor)
         ]
         reduce [w h a]
     ]
@@ -261,7 +277,7 @@ report-view: make report-styles [
             adv: measure-text "M"
             (length? text) * adv
         ][
-            measure-text text
+            to integer! round ((measure-text text) * view-width-factor)
         ]
     ]
 
@@ -276,6 +292,7 @@ report-view: make report-styles [
         ]
         either any-style? [set-font styles sz][set-font [] font-size]
         tw: measure-text alphabet
+        if (style-family styles) <> 'mono [tw: tw * view-width-factor]
         tw * 1.0 / (length? alphabet)
     ]
 
@@ -285,7 +302,7 @@ report-view: make report-styles [
         "Conservative per-character width for column layout"
         styles [block!]
     ][
-        font-size * 0.583
+        font-size * 0.583 * view-width-factor
     ]
 
     col-apply-styles: func [
@@ -749,14 +766,14 @@ report-view: make report-styles [
                 pair: line/1
                 styles: resolve-colors either all [(length? pair) >= 2 block? pair/2][pair/2][copy []]
                 text: format-pair-value pair/1 styles
-                draw-styled-text margin-left y-pos text col-w (style-align-for pair/1 styles) styles
+                draw-styled-text margin-left y-pos text content-w (style-align-for pair/1 styles) styles
             ][
                 join-x: margin-left
                 join-y: y-pos
                 foreach pair line [
                     styles: resolve-colors either all [(length? pair) >= 2 block? pair/2][pair/2][copy []]
                     text: format-pair-value pair/1 styles
-                    draw-styled-text/join margin-left y-pos text col-w (style-align-for pair/1 styles) styles
+                    draw-styled-text/join margin-left y-pos text content-w (style-align-for pair/1 styles) styles
                 ]
             ]
         ]
@@ -779,11 +796,11 @@ report-view: make report-styles [
                 if number? text [text: form text]
                 align: case [idx = 1 ["L"] idx = 2 ["C"] idx = 3 ["R"] true ["L"]]
                 text: replace-tokens text page-num-arg total-pages-arg date-str-arg time-str-arg datetime-str-arg
-                either all [empty? styles default-style][
-                    draw-styled-text margin-left y text col-w align def-styles
-                ][
-                    draw-styled-text margin-left y text col-w align styles
-                ]
+            either all [empty? styles default-style][
+                draw-styled-text margin-left y text content-w align def-styles
+            ][
+                draw-styled-text margin-left y text content-w align styles
+            ]
             ]
         ]
     ]
@@ -1044,7 +1061,7 @@ report-view: make report-styles [
         line [block!]
         /local lines l lm wi
     ][
-        lines: wrap-line line (either nowrap? line [1000000][col-w]) :line-measure
+        lines: wrap-line line (either nowrap? line [1000000][content-w]) :line-measure
         wi: 0
         foreach l lines [
             wi: wi + 1
@@ -1559,6 +1576,7 @@ report-view: make report-styles [
         margin-right:  max any [page-obj/margin/right  50] edge-pad
         margin-top:    max any [page-obj/margin/top    50] edge-pad
         margin-bottom: max any [page-obj/margin/bottom 50] edge-pad
+        content-w: max 1 (page-width - margin-left - margin-right)
 
         ; line spacing = base size x factor (per-renderer factor; the font scales
         ; already match the glyph sizes, so scaling here would double-count)
@@ -1664,7 +1682,7 @@ report-view: make report-styles [
             prev-line: last active-hdr/lines
         ]
 
-        ww: max 1 (page-width - margin-left - margin-right)
+        ww: content-w
 
         ; one content item (text line or block); box accumulation is the caller's job
         emit-item: func [line [block! object!] /local y0][
@@ -1794,7 +1812,7 @@ report-view: make report-styles [
         ; AT does not move the flow cursor and does not update prev-* (it is an
         ; overlay); it cannot page-break.
         _emit-at: func [line [object!] /local env av ax ay aw
-            saved-y saved-ml saved-ww saved-prev-box saved-prev-line saved-prev-draw saved-in-frame err][
+            saved-y saved-ml saved-ww saved-cw saved-prev-box saved-prev-line saved-prev-draw saved-in-frame err][
             env: at-env
             if all [not prev-box  report-styles/at-uses-prev? line/args][
                 cause-error 'script 'invalid-arg "AT references prev-* but there is no previous element on this page"
@@ -1809,11 +1827,12 @@ report-view: make report-styles [
                 cause-error 'script 'invalid-arg "AT coordinates must be integers or a pair"
             ]
             aw: max 1 (page-width - margin-right - ax)
-            saved-y: page-y  saved-ml: margin-left  saved-ww: ww
+            saved-y: page-y  saved-ml: margin-left  saved-ww: ww  saved-cw: content-w
             saved-prev-box: prev-box  saved-prev-line: prev-line  saved-prev-draw: prev-draw?
             saved-in-frame: in-frame?
             margin-left: ax
             ww: aw
+            content-w: aw
             page-y: page-height - ay - ascent
             in-frame?: true
             prev-line: none
@@ -1822,7 +1841,7 @@ report-view: make report-styles [
             if page-y < page-bottom [
                 print rejoin ["Warning: AT at " ax "x" ay " overflows the page"]
             ]
-            page-y: saved-y  margin-left: saved-ml  ww: saved-ww
+            page-y: saved-y  margin-left: saved-ml  ww: saved-ww  content-w: saved-cw
             prev-box: saved-prev-box  prev-line: saved-prev-line  prev-draw?: saved-prev-draw
             in-frame?: saved-in-frame
         ]
@@ -1864,12 +1883,16 @@ report-view: make report-styles [
     render-page: func [
         "Render a page draw block at given zoom percent (100 = native size)"
         page-block [block!] zoom [integer!]
-        /local z sz composed
+        /local z sz composed img
     ][
         z: zoom / 100.0
         sz: as-pair to integer! (page-width * z) to integer! (page-height * z)
         composed: compose/deep [scale (z) (z) (page-block)]
-        draw sz composed
+        ; Paint on an opaque white canvas. A transparent page image can fail to
+        ; composite on Windows when it is larger than the viewer viewport (e.g.
+        ; fit-width A4 without DRAW-BG), leaving the window blank.
+        img: make image! reduce [sz white]
+        draw img composed
     ]
 
     get-page-width: does [page-width]
@@ -1882,7 +1905,7 @@ report-view: make report-styles [
         window-title [string!] "Window title"
         popup-fn [function! none!] "func [type [lit-word!] id [integer!] text [string!]]"
         /fit-width "Start in fit-width mode (default: full/proportional view)"
-        /local current-page current-img fit-width? scroll-y toolbar-h
+        /local current-page current-img paint-retries fit-width? scroll-y toolbar-h
                popup-handler hovered-hs hint-active hint-start
                sv-page-width sv-page-height sv-page-hotspots
                screen-to-page hit-test toc-target ensure-img scale-view update-buttons showpage
@@ -1894,6 +1917,7 @@ report-view: make report-styles [
     ][
         current-page: 1
         current-img: none
+        paint-retries: 10        ; first ~1s: force a repaint after the window is shown
         last-pn: 0  last-zoom: 0  last-img: none   ; single-entry render cache
         fit-width?: fit-width          ; seeded by the /fit-width refine (default full view)
         scroll-y: 0
@@ -1990,8 +2014,13 @@ report-view: make report-styles [
             ]
             disp-w: max 1 to integer! (pw * ratio)
             disp-h: max 1 to integer! (ph * ratio)
-            render-pct: min 300 max 100 to integer! (ratio * 300)
+            render-pct: either fit-width? [min 300 max 100 to integer! (ratio * 300)][100]
             ensure-img render-pct
+            ; Force the face to redraw: re-setting the same image is a no-op, and
+            ; the initial image can be assigned before the window is on screen,
+            ; which leaves a blank viewer with the correct title. Assigning none
+            ; first marks the image facet dirty; the final image is what draws.
+            img-f/image: none
             img-f/image: current-img
             img-f/size: as-pair disp-w disp-h
             max-scroll: max 0 disp-h - vp-h
@@ -2081,7 +2110,7 @@ report-view: make report-styles [
             clip-f: panel  600x800 [
                 img-f: image white
                     all-over
-                    rate 1
+                    rate 0:0:0.1
                     on-over [
                         page-pos: screen-to-page event/offset/x event/offset/y
                         new-hs: either page-pos [hit-test page-pos][none]
@@ -2099,6 +2128,17 @@ report-view: make report-styles [
                         ]
                     ]
                     on-time [
+                        ; The initial showpage can run before a modal window is
+                        ; shown on Windows: the image is set but the face never
+                        ; paints, leaving an empty window with the right title.
+                        ; Force a repaint for the first ~1s after opening, then
+                        ; only retry if the image is still missing.
+                        either paint-retries > 0 [
+                            paint-retries: paint-retries - 1
+                            do [showpage]
+                        ][
+                            if all [not empty? page-draws  none? current-img][do [showpage]]
+                        ]
                         if all [hovered-hs hovered-hs/hint-id not hint-active][
                             if (to integer! now/time/precise - hint-start) > hint-delay [
                                 hint-active: true

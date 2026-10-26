@@ -17,17 +17,34 @@ View document and/or a PDF. No build step; run the scripts with Red.
 | `docs/report-syntax-spec.md` | authoritative syntax reference |
 | `docs/cheatsheet.md` | condensed “what may I write here” |
 | `tests/check.red` | headless parse/validate/render harness |
+| `tests/metrics-probe.red` | font parity probe (run with `red-view`; writes `tests/metrics-probe.txt`) |
+| `tests/parity-pages.red` | View/PDF page-count parity probe (run with `red-view`) |
 
 ## Build / test
 
 ```bash
 red tests/check.red          # parse + validate every samples/*.red
 red tests/check.red --pdf    # also render each sample to PDF (headless)
+red tests/check.red --pdf --only 110-long-text.red   # isolate one sample
+red-view tests/parity-pages.red 010-hello.red        # View vs PDF page count
+red-view tests/parity-pages-all.red                  # same for every sample (writes tests/parity-all.txt)
+red-view tests/metrics-probe.red                     # font metrics (writes a .txt)
 ```
 
 Both must end with `samples: N passed: N failed: 0`. Run this after any library
 change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning);
-`red-view` is the GUI build used to actually view reports.
+`red-view` is the GUI build used to actually view reports. Use a matching current
+Red build for both; the old 0.6.6 x86 `red-view` had Windows viewer bugs (see
+“Viewer/Red build” below).
+
+With the old Red 0.6.6 console build, the full `--pdf` sweep hits an access
+violation after `100-toc` (cumulative PDF generation in one process); every
+sample passes individually with `--only`. The same old build can abort a
+`parity-pages-all.red` sweep after ~15 samples; it rewrites
+`tests/parity-all.txt` after every sample, so the remaining samples can be
+passed by name (e.g. `red-view tests/parity-pages-all.red 100-toc.red 110-long-text.red`).
+`010-hello` needs `samples/010-hello.red.png`; it is unignored so it can be
+committed. Without it, the PDF render warns and fails.
 
 ## DSL invariants (current — do not regress)
 
@@ -62,8 +79,33 @@ change. `red` is the console build (no draw: `DRAW-BG` is skipped with a warning
   pattern style makes entries clickable (View-only jump).
 - **Metrics**: a line box is split into true ascent/descent with
   `report-styles/box-ascent-frac`; do not reintroduce “ascent = line-box height”.
-  This is what keeps mixed font families on one baseline.
+  This is what keeps mixed font families on one baseline. On Windows and macOS,
+  `view-metrics` takes its line-box height from `report-pdf/font-line-scale-for`
+  (the same per-size grid as the PDF); only widths come from `size-text`. Linux
+  keeps the measured OS box. Do not switch them back to raw `size-text` height —
+  small-size rounding (`m/9`: 15 vs 14) accumulates into different page breaks.
+- **Platform fonts**: `report-styles/platform` selects the Windows View faces
+  (Times New Roman/Arial/Courier New) and the per-platform PDF scale/ascent
+  tables; Linux keeps the original values, Windows and macOS are measured. On
+  Windows the View draw shaper advances mixed text ~3.5% wider than `size-text`,
+  so `report-styles/view-width-factor` (`1.035`; `1.0` elsewhere) is applied to
+  the View line/column measurement and included in the Windows PDF `font-scale`
+  values. Re-measure with `red-view tests/metrics-probe.red` (writes
+  `tests/metrics-probe.txt` and quits) after changing faces or metrics; do not
+  guess the Windows/macOS constants.
+- **Viewer render scale**: full view renders at 100% so text advances match the
+  layout; fit-width supersamples up to 3x for image sharpness. Large text at 3x
+  hints ~3.5% wider, which is why full-view pages must stay at 100% for
+  View/PDF line-break parity.
+- **Heading fonts**: `report-pdf/font-for-styles` mirrors `report-view/build-font`:
+  h1/h2/h3 (and f1–f3) auto-bold serif/sans, but not mono; italic headings stay
+  italic unless `/b` is explicit.
 - **PDF**: Base-14 fonts; links/hints, hotspots and `%page-size%` are View-only.
+  PDF glyphs are drawn at `Tf = nominal * 1.3333` (96/72) with
+  `Tz = font-scale / 1.3333 * 100`; `pdf-kit/text-width`, wrapping and column
+  measurement still use `font-scale`. This matches the View's glyph height
+  without changing the calibrated advances. Do not collapse the two into one
+  `Tf`: the PDF text then looks ~5% shorter than the View.
   Images are XObjects: `.jpg/.jpeg` as JPEG (`/DCTDecode`, lossy); PNG/BMP and
   in-memory `image!` values losslessly as zlib `/FlateDecode` RGB (so screenshots,
   text and diagrams stay sharp); `.gif/.webp` use JPEG. Lossless needs an image
@@ -113,8 +155,28 @@ it captures `what` before defining its helpers.
   only as the first element of a block.
 - The View renders each page at the display zoom and shows it 1:1; PDF parity is
   checked by rasterizing both when changing metrics.
+- **Viewer first paint (Windows)**: on older Red/View builds the initial
+  `showpage` can run before a modal window is shown; `clip-f/parent/size` may be 0
+  or the image face may be populated without a repaint, leaving an empty window
+  with the right title. The `scale-view` image-none toggle and the `img-f` 100 ms
+  `on-time` timer remain as safety for those builds; current Red paints without
+  them. Keep both; the timer also drives hint timing. The `110-long-text` blank
+  window was a separate older-build bug fixed by updating `red-view`.
 - Known cosmetic issue: the 1 px TOC link underline can look clipped at a few
   fractional zoom levels (rasterization); accepted, do not “fix” with line gaps.
+- **Viewer/Red build**: an older Red/View Windows build (the original 0.6.6 x86
+  install) could leave the `110-long-text` viewer client area blank while the
+  page raster and PDF were correct. Replacing `red-view` with the current Red
+  build fixes it (confirmed). If a report paints blank, test with the latest Red
+  before changing the viewer; the page raster/PDF is the ground truth. The
+  opaque page canvas, image-dirty toggle, and first-paint timer remain as
+  harmless guards for older builds; current Red does not need them to paint.
+- **Sampler reentrancy / cwd**: a sample's modal viewer can still let the sampler
+  window receive events on Windows. `render-selected` sets `rendering?`, disables
+  the list, and re-enables it afterwards; `select-item` and the other handlers bail
+  out while rendering. Keep this guard. Sample `files` are absolute (built from
+  `samples-dir`), and `render-selected` changes to the sample's directory and
+  restores `root`, so a sample's `change-dir` cannot break the sampler's reads.
 - Colour shades (`gray0..gray9`, `red0..red9`, …, 13 families, 0 = lightest) are
   defined **globally** at library load by `libs/report-styles.red` (table
   `report-styles/shade-tuples`), so the DSL and raw DRAW use them with no `do load`.

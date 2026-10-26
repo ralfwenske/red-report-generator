@@ -832,17 +832,53 @@ One `make-font` call configures the View **and** PDF renderers plus the shared
 column widths and pagination consistent across both.
 
 Two renderer-specific notes. The PDF uses the **Base-14** fonts only
-(Times/Helvetica/Courier; no embedded fonts), and the View is set to matching
-metric-compatible faces (`font-face-serif` `Times New Roman`, `font-face-sans`
-`Helvetica`, `font-face-mono` `Courier`). The View renders ~1.3× wider per point
-than the PDF and the three faces differ slightly, so the parity scale is set
-**per family**: View `font-scale-serif` / `font-scale-sans` / `font-scale-mono`
-(default `0.84`, base 12 → 10, rounded to whole points — GTK renders whole-point
-sizes only) and PDF `font-scale-serif` / `font-scale-sans` / `font-scale-mono`
-(default `1.13`, fractional is allowed). This lets each of the three fonts match
-the PDF's separately; tune the six numbers for closest parity. Serif and sans-serif
-glyph widths vary, so they cannot match exactly — **for the closest View/PDF match
-use the mono family (`m`)**, whose fixed advance makes widths and line breaks line up.
+(Times/Helvetica/Courier; no embedded fonts). The View uses metric-compatible
+faces selected per platform (`system/platform`):
+
+| Platform | serif | sans | mono |
+|---|---|---|---|
+| Windows | Times New Roman | Arial | Courier New |
+| Linux / macOS / other | Times New Roman | Helvetica | Courier |
+
+The View measures OS-font pixels while the PDF uses points/AFM, so the PDF
+renderer carries **per-platform** multipliers:
+
+- `report-pdf/font-scale-*` — glyph advances (width, wrapping, column measurement)
+- `report-pdf/line-scale-*` — line-box height
+- `report-pdf/font-scale-heading-*` / `line-scale-heading-*` — h1/h2/h3 (and f1–f3)
+- `report-styles/ascent-frac-*` — baseline split, shared by both renderers
+- `report-pdf/glyph-scale` — PDF glyph height. The View renders at 96 dpi
+  (12 pt → 16 px), so PDF text is drawn at `nominal * 1.3333` (`Tf`) with
+  `Tz = font-scale / 1.3333`, which keeps the measured advances/wrapping but
+  matches the View's glyph height. Do not set `Tf` to the advance size: the
+  PDF glyphs then come out about 5% shorter than the View's.
+
+On Windows and macOS, both renderers share one vertical grid: the View takes
+its line-box height from `report-pdf/font-line-scale-for` (per family and size)
+while widths still come from the OS font, so small-size rounding (e.g. `m/9`)
+cannot accumulate into different page breaks. Linux keeps the View's measured
+box. The View's own `font-scale-*` stay at `1` (Red View sizes are whole
+points). Current values (2026-10-26, Red 0.6.6):
+
+On Windows, the View draw shaper advances mixed text about 3.5% wider than
+`size-text` reports. `report-styles/view-width-factor` (Windows `1.035`,
+Linux/macOS `1.0`) is applied to the View's line/column measurement and to the
+PDF advances, so wrapping lands on the edge that is actually drawn. The Windows
+rows below already include that factor. Full-view pages are rasterized at 100%
+for layout parity; fit-width pages may supersample up to 3x for image sharpness,
+but 3x text hinting can add another ~3.5% advance.
+
+| Platform | body font s/se/m | body line s/se/m | ascent s/se/m | heading font s/se/m | heading line s/se/m |
+|---|---|---|---|---|---|
+| Windows | 1.3110 / 1.3419 / 1.3889 | 1.56 / 1.50 / 1.50 | 0.815 / 0.84 / 0.74 | 1.3559 / 1.3621 / 1.308 | 1.50 / 1.55 / 1.50 |
+| Linux | 1.32 / 1.38 / 1.40 | 1.56 / 1.40 / 1.40 | 0.79 / 0.715 / 0.60 | same as body | same as body |
+| macOS | 1.2496 / 1.2498 / 1.25 | 1.4167 / 1.61 / 1.61 | 0.81 / 0.62 / 0.62 | 1.2840 / 1.2840 / 1.2840 | 1.47 / 1.60 / 1.60 |
+
+Windows and macOS values are measured with `red-view tests/metrics-probe.red`
+(it writes `tests/metrics-probe.txt`); re-run it after changing faces or the Red
+build. Serif and sans glyph widths still vary slightly, so they cannot match
+exactly — **for the closest View/PDF match use the mono family (`m`)**, whose
+fixed advance makes widths and line breaks line up.
 
 `show-report` runs `validate-report` on the description first. It opens a window
 only when the report is valid and then returns `""` (after the window is closed);
@@ -916,7 +952,13 @@ units, validation) were never in the draft.
    object is not found by `resolve-colors`.
 7. **Section/TABLE style args now thread down** — `HEADER`/`BODY`/`FOOTER` and `TABLE` accept style words that inherit to every line/row/cell (per-value merge on top, `!X` cancels); only *non-style* section args (background, indent, column layout) are un-implemented.
 8. **PDF images** — `.jpg/.jpeg` stays JPEG (lossy); PNG/BMP and `image!` are lossless Flate RGB; a source with transparency also carries a grayscale `/SMask` so it composites over the backdrop.
-9. **Headings and font scale are hard-coded per renderer** — heading sizes 24/18/14 pt; `font-size 12` pt and `line-height 18` pt in both; View scales headings by `font-scale 0.82`, PDF by `1.0`.
+9. **Font parity is measured per platform** — heading sizes are 24/18/14 pt, base
+   is 12 pt. Windows and macOS body text is calibrated to within ~1 px; line
+   heights and baselines match exactly because both renderers share the per-size
+   vertical grid. Serif/sans heading widths can still differ by a few percent
+   because the OS face and the Base-14 face are not identical. Windows and macOS
+   values are measured with `tests/metrics-probe.red`; Linux retains the original
+   calibration.
 10. **`HEADER`/`FOOTER` accept text lines only** — `TABLE`/`COLUMN`/`IMAGE`/`DRAW` are
     not rendered there and are rejected by validation. Use `DRAW-BG` for a page-wide
     logo or `DRAW` in `BODY`. (Allowing `DRAW`/`IMAGE` in a running header/footer is a

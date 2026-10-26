@@ -16,22 +16,58 @@ Red [
 report-pdf: make report-styles [
     ;=== Typography (aligned with report-view for matching pagination) ===
     font-size:           12
+
+    ; Platform profile. Order: [font-serif font-sans font-mono
+    ;                           line-serif line-sans line-mono].
+    ; The PDF uses Base-14 faces, so these multipliers are the fine parity knob
+    ; against the View's OS faces. Linux keeps the original calibration; the
+    ; Windows and macOS rows are measured with tests/metrics-probe.red.
+    pdf-scales: [
+        Windows [1.3110 1.3419 1.3889  1.56 1.50 1.50]   ; includes view-width-factor 1.035
+        Linux   [1.32 1.38 1.40  1.56 1.40 1.40]
+        macOS   [1.2496 1.2498 1.25  1.4167 1.61 1.61]   ; measured 2026-10-26
+    ]
+    scale-set: any [
+        select pdf-scales report-styles/platform
+        select pdf-scales to-word "Linux"
+    ]
+
+    ; Heading (h1/h2/h3, f1/f2/f3) scales. Order matches pdf-scales:
+    ; [font-serif font-sans font-mono  line-serif line-sans line-mono].
+    ; The View's OS font grows slightly wider per point at heading sizes, so
+    ; the heading row is measured separately. Linux keeps the body values; the
+    ; Windows and macOS rows are measured with tests/metrics-probe.red.
+    pdf-heading-scales: [
+        Windows [1.3559 1.3621 1.308  1.50 1.55 1.50]   ; includes view-width-factor 1.035
+        Linux   [1.32 1.38 1.40  1.56 1.40 1.40]
+        macOS   [1.2840 1.2840 1.2840  1.47 1.60 1.60]   ; measured 2026-10-26
+    ]
+    heading-scale-set: any [
+        select pdf-heading-scales report-styles/platform
+        select pdf-heading-scales to-word "Linux"
+    ]
+    font-scale-heading-serif: heading-scale-set/1
+    font-scale-heading-sans:  heading-scale-set/2
+    font-scale-heading-mono:  heading-scale-set/3
+    line-scale-heading-serif: heading-scale-set/4
+    line-scale-heading-sans:  heading-scale-set/5
+    line-scale-heading-mono:  heading-scale-set/6
+
     ; Per-family multipliers; PDF sizes may be fractional, so this is the fine
     ; parity knob against the View's whole-point serif/sans/mono sizes. These
     ; scale glyph *advances* only (width / wrapping / column measurement).
-    font-scale-serif:   1.32 ;  1.1312 / 0.84
-    font-scale-sans:    1.38 ;  1.125 / 0.84
-    font-scale-mono:    1.4 ;  1.131 / 0.84
+    font-scale-serif:   scale-set/1
+    font-scale-sans:    scale-set/2
+    font-scale-mono:    scale-set/3
 
     ; Per-family line-box factors for the PDF's Base-14 faces, applied to the
     ; *nominal* size (base or heading) — not to the glyph-scaled size. The View
     ; measures its OS font's line box (ascender+descender at 96 dpi) for the same
     ; nominal size; these reproduce that box so lines and background boxes share
-    ; one geometry across both renderers. Calibrated against the View's measured
-    ; `size-text` heights (serif h2/h3 24/18/14 -> 36/28/22; mono/sans -> 17 at 12).
-    line-scale-serif:   1.56
-    line-scale-sans:    1.4
-    line-scale-mono:    1.4
+    ; one geometry across both renderers.
+    line-scale-serif:   scale-set/4
+    line-scale-sans:    scale-set/5
+    line-scale-mono:    scale-set/6
 
     ;=== PDF font numbers (order matches pdf-kit/font-names) ===
 
@@ -50,6 +86,12 @@ report-pdf: make report-styles [
     current-font:           1
     current-size:           font-size
     current-color:          none
+    ; View font pixels are 96 dpi (12 pt -> 16 px); PDF points are 72 dpi.
+    ; Draw glyphs at the 96/72 size so their height matches the View, and use
+    ; `current-hscale` (advance-scale / glyph-scale) as PDF `Tz` so widths and
+    ; wrapping keep the measured per-family scale.
+    glyph-scale:            1.3333
+    current-hscale:         1.0
     jx:                     0
 
     ; inline raw draw (BODY) state
@@ -78,7 +120,7 @@ report-pdf: make report-styles [
         "Conservative per-character width for column layout"
         col-styles [block!]
     ][
-        font-size * 0.583
+        font-size * 0.583 * view-width-factor
     ]
 
     col-w-px: func [
@@ -129,7 +171,7 @@ report-pdf: make report-styles [
         out [string!] x [number!] y [number!] text [string!]
         font-no [integer!] size [number!] color [tuple! none!]
         col-w-c [number! none!] col-w-r [number! none!]
-        /local tw tx
+        /local tw tx tf
     ][
         if empty? text [exit]
         tw: pdf-kit/text-width font-no size text
@@ -138,9 +180,11 @@ report-pdf: make report-styles [
             all [col-w-c col-w-c > 0] [x + ((col-w-c - tw) / 2.0)]
             true [x]
         ]
+        tf: size / current-hscale
         emit out [either color [pdf-kit/rgb color] ["0 0 0"] " rg"]
         emit out [
-            "BT /F" font-no " " (form size) " Tf "
+            "BT /F" font-no " " (pdf-kit/num tf) " Tf "
+            (pdf-kit/num (current-hscale * 100)) " Tz "
             "1 0 0 1 " (pdf-kit/num tx) " " (pdf-kit/num y) " Tm <"
             (pdf-kit/hex text) "> Tj ET"
         ]
@@ -151,6 +195,7 @@ report-pdf: make report-styles [
         out [string!] x [number!] y [number!] text [string!]
         /center col-w-c [number!] /right col-w-r [number!]
     ][
+        current-hscale: 1.0
         emit-text-op out x y text current-font current-size current-color
             (either col-w-c [col-w-c][0]) (either col-w-r [col-w-r][0])
     ]
@@ -159,12 +204,14 @@ report-pdf: make report-styles [
         "Continue left-aligned PDF text at the join cursor; advances it"
         out [string!] y [number!] text [string!]
         font-no [integer!] size [number!] color [tuple! none!]
-        /local tw
+        /local tw tf
     ][
         tw: pdf-kit/text-width font-no size text
+        tf: size / current-hscale
         emit out [either color [pdf-kit/rgb color] ["0 0 0"] " rg"]
         emit out [
-            "BT /F" font-no " " (form size) " Tf "
+            "BT /F" font-no " " (pdf-kit/num tf) " Tf "
+            (pdf-kit/num (current-hscale * 100)) " Tz "
             "1 0 0 1 " (pdf-kit/num jx) " " (pdf-kit/num y) " Tm <"
             (pdf-kit/hex text) "> Tj ET"
         ]
@@ -264,11 +311,18 @@ report-pdf: make report-styles [
         hd: style-level styles
 
         either find [1 2 3] hd [
+            ; Match build-font: h*/f* auto-bold serif/sans, but not mono or
+            ; italic headings (an explicit /b still wins).
             case [
+                all [m? b? i?] [mono-bold-italic-font]
                 all [m? b?] [mono-bold-font]
+                all [m? i?] [mono-italic-font]
                 m?          [mono-font]
+                all [s? b? i?] [sans-bold-italic-font]
                 all [s? b?] [sans-bold-font]
-                s?          [sans-font]
+                all [s? i?] [sans-italic-font]
+                s?          [sans-bold-font]
+                all [b? i?] [bold-italic-font]
                 b?          [bold-font]
                 i?          [italic-font]
                 true        [bold-font]
@@ -333,28 +387,42 @@ report-pdf: make report-styles [
     ]
 
     font-scale-for: func [
-        "Per-family size multiplier for a style block (mono > sans > serif)."
+        "Per-family size multiplier for a style block (heading sizes use the heading row)."
         styles [block!]
-        /local fam
+        /local fam hd
     ][
         fam: style-family styles
+        hd: style-level styles
         case [
-            fam = 'mono [font-scale-mono]
-            fam = 'sans [font-scale-sans]
-            true        [font-scale-serif]
+            fam = 'mono [
+                either find [1 2 3] hd [font-scale-heading-mono][font-scale-mono]
+            ]
+            fam = 'sans [
+                either find [1 2 3] hd [font-scale-heading-sans][font-scale-sans]
+            ]
+            true [
+                either find [1 2 3] hd [font-scale-heading-serif][font-scale-serif]
+            ]
         ]
     ]
 
     font-line-scale-for: func [
         "Per-family line-box factor for a style block, applied to the nominal size."
         styles [block!]
-        /local fam
+        /local fam hd
     ][
         fam: style-family styles
+        hd: style-level styles
         case [
-            fam = 'mono [line-scale-mono]
-            fam = 'sans [line-scale-sans]
-            true        [line-scale-serif]
+            fam = 'mono [
+                either find [1 2 3] hd [line-scale-heading-mono][line-scale-mono]
+            ]
+            fam = 'sans [
+                either find [1 2 3] hd [line-scale-heading-sans][line-scale-sans]
+            ]
+            true [
+                either find [1 2 3] hd [line-scale-heading-serif][line-scale-serif]
+            ]
         ]
     ]
 
@@ -747,6 +815,7 @@ report-pdf: make report-styles [
         fc: style-frame-color styles
         if all [fc not opaque-tuple? fc][fc: none]
         sz: (font-size-for styles) * font-scale-for styles
+        set in self 'current-hscale (font-scale-for styles) / glyph-scale
         font-no: either any-style? [font-for-styles styles][regular-font]
         ut: style-underline-type/explicit styles
 

@@ -7,6 +7,7 @@ check-*.pdf
 # Local screenshots / rendered page images (keep the sample's own asset)
 *.png
 !samples/code-viewer.png
+!samples/010-hello.red.png
 !assets/*.png
 
 # Variants saved by sampler (…-mod.red)
@@ -17,6 +18,12 @@ samples/*-mod.red
 # Local backups and stray outputs
 samples copy/
 *.pdf
+
+# Font parity probe output (see tests/metrics-probe.red)
+tests/metrics-probe.txt
+
+# Page-count parity probe output (see tests/parity-pages.red)
+tests/parity-*.txt
 
 # macOS metadata
 .DS_Store

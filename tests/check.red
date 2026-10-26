@@ -16,6 +16,8 @@ check-root: what-dir
 
 args: any [system/options/args []]
 want-pdf?: not none? find args "--pdf"
+only-idx: find args "--only"
+only-file: either only-idx [to-file pick args (index? only-idx) + 1][none]
 
 ;--- helpers ----------------------------------------------------------------
 
@@ -111,6 +113,7 @@ sort samples
 check-passed: 0
 check-failed: 0
 foreach sf samples [
+    if all [only-file only-file <> sf][continue]
     change-dir check-root   ; a failed render must not leave us in samples/
     check-res: try [check-sample sf]
     either error? check-res [

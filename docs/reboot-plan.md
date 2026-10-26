@@ -299,9 +299,10 @@ Sketch of the first three (content only, to be written during implementation):
   sizes are rounded to whole points (GTK renders whole-point sizes only; fractional
   sizes collapsed the heading/body distinction). Because the View renders ~1.3×
   wider per point and the three faces differ slightly, the parity scale is set
-  **per family**: View `font-scale-serif/-sans/-mono` (default `0.84`) and PDF
-  `font-scale-serif/-sans/-mono` (default `1.13`, fractional). Six numbers to tune
-  for closest serif/sans/mono parity.
+  **per family**: View `font-scale-serif/-sans/-mono` (an early calibration used
+  `0.84`; current View scales are `1`) and PDF `font-scale-*`/`line-scale-*`
+  (platform-selected; see spec §12 for the current Windows/Linux/macOS values).
+  Six numbers per family are tuned for closest serif/sans/mono parity.
 - **Rendering no longer mutates the parsed report** — `format-pair-value` expanded
   `<now>` with an in-place `replace/all`, so the first render rewrote the parsed
   string. Rendering the same page-obj again (View then PDF, or two PDFs) then

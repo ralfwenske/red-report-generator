@@ -37,6 +37,37 @@ report-styles: context [
     underline-offset:     2
     stroke-width:         0.5
 
+    ;=== Platform profile ===
+
+    ; Red reports system/platform as a lit-word ('Windows / 'Linux / 'macOS).
+    ; Normalize to a word so the profile lookups and comparisons are unambiguous.
+    platform: to-word any [attempt [to-word system/platform] "Linux"]
+    ; Older Red builds may report the cross-compilation target name.
+    if platform = to-word "Darwin" [platform: to-word "macOS"]
+
+    ; [serif sans mono] fraction of the measured line box above the baseline.
+    ; `size-text` reports the whole line box, so both renderers split it with
+    ; this to place glyphs on a common baseline. The Linux row is the value the
+    ; library was originally calibrated with; the Windows and macOS rows are
+    ; measured with tests/metrics-probe.red (drawn "H" baseline scan).
+    ascent-fracs: [
+        Windows [0.815 0.84 0.74]   ; measured with tests/metrics-probe.red
+        Linux   [0.79 0.715 0.60]
+        macOS   [0.81 0.62 0.62]    ; measured with tests/metrics-probe.red
+    ]
+    af: any [
+        select ascent-fracs platform
+        select ascent-fracs to-word "Linux"
+    ]
+    ascent-frac-serif: af/1
+    ascent-frac-sans:  af/2
+    ascent-frac-mono:  af/3
+
+    ; On Windows the View draw shaper advances mixed text ~3.5% wider than
+    ; `size-text` reports. Apply the same factor to View line/column measurement
+    ; and to the PDF advances, so wrapping lands on the edge that is drawn.
+    view-width-factor: either platform = to-word "Windows" [1.035][1.0]
+
     ;=== Unit helpers ===
 
     width-spec-px: func [
@@ -683,13 +714,14 @@ report-styles: context [
     box-ascent-frac: func [
         {Fraction of the measured line-box height that lies above the baseline, per
          family — the font's true ascender. `size-text` reports the whole line box,
-         so both renderers split it with this to place glyphs on a common baseline.}
+         so both renderers split it with this to place glyphs on a common baseline.
+         The values are selected per platform (see the Platform profile section).}
         styles [block!]
     ][
         case [
-            (style-family styles) = 'mono [0.60]   ; Courier: asc/box
-            (style-family styles) = 'sans [0.715]  ; Helvetica
-            true [0.79]                            ; Times / serif
+            (style-family styles) = 'mono [ascent-frac-mono]
+            (style-family styles) = 'sans [ascent-frac-sans]
+            true [ascent-frac-serif]
         ]
     ]
 
