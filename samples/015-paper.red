@@ -13,14 +13,14 @@ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVW
 }
 
 report: compose/deep [
-    a4 margin/20
+    a4 landscape margin/20 left/40
     [HEADER [
         ["ACME Corp" [f1 red] "Quarterly Report" [f2]]
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]
         []
     ]]
     [BODY [
-        ["Landscape A5, 20 pt margins" [f2]]
+        ["Landscape A4, 20 pt margins" [f2]]
         ["The paper clause comes first, before the items."]
         ["Try portrait, letter, or an explicit 600x800 pair."]
         []
