@@ -16,7 +16,7 @@ do-popup: func [type [word!] id [word! number!] txt [string!] /local body page][
         "You " either type = 'link ["clicked"] ["hovered"] " "
         form type " " form id ": " txt
     ]
-    page: compose/deep [[BODY [
+    page: [[BODY [
         [(body) [f3]]
         ["This popup is itself a report, shown with show-popup."]
         []

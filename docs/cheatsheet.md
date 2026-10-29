@@ -68,7 +68,7 @@ Args are matched **by type, not position**; a modifier carries its optional valu
 | `TABLE` | `BODY` | `BOX`/`ALT` (any order) + style words | rows; **first row = header + column spec** |
 | `COLUMN` | `BODY` | width? (`px/N`/`ch/N`/`auto`) `gap-ch/N`|`gap-px/N`? style-words? [`image` `[img-styles]`]? | rows (lines / `IMAGE` / `PAGEBREAK`) |
 | `IMAGE` | `BODY`, `COLUMN` | width? (shadow\|border)(/N)? colour? (`<`\|`^`\|`>`)? source | optional caption line `["cap" [styles]]` |
-| `PAGEBREAK` | `BODY`, `COLUMN`, `TABLE` rows | optional integer = reserve n lines | — |
+| `PAGEBREAK` | `BODY`, `COLUMN`, `TABLE` rows | optional integer = reserve n lines; optional `[HEADER [...]]` / `[FOOTER [...]]` overrides (BODY/TABLE rows) | — |
 | `DRAW` | `BODY` | optional integer `H` (points consumed) | raw draw ops |
 | `FRAME` | `BODY` | optional integer padding | `[items]` then `[draw ops]` |
 | `AT` | `BODY` | `x y` (two expressions) or one pair — evaluated at render with `prev-*`/`page-*`/`cursor-*` | text lines / `IMAGE` (absolute overlay; flow does not advance) |
@@ -220,6 +220,10 @@ block still parse.)
 - `[HEADER [ … ] [ … ]]`: 2nd block is shown from **page 2** on; `[]` = none from page 2.
 - In-body `[HEADER […]]` / `[FOOTER […]]`: **running override from the next page onward**;
   the current page keeps its header/footer.
+- `[PAGEBREAK [HEADER […]] [FOOTER […]]]`: sugar for the override immediately before the
+  break (BODY and `TABLE` page-break rows).
+- The first content item after a header starts one **normal line gap** below it, whatever
+  its type; add an empty line to a header for more space.
 
 ---
 

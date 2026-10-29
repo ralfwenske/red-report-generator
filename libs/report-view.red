@@ -52,6 +52,7 @@ report-view: make report-styles [
     ; Layout state shared with _emit-* functions
     usable-top: 0
     page-bottom: 0
+    after-hdr?: false
     content-w: 0
 
     ;=== Report generation state (context-level so _emit-* can access) ===
@@ -114,6 +115,20 @@ report-view: make report-styles [
         blk [block! none!]
     ][
         either all [blk not empty? blk][object [lines: blk]][none]
+    ]
+
+    apply-pagebreak-hf: func [
+        "Stage a PAGEBREAK's [HEADER]/[FOOTER] overrides as the running header/footer."
+        pb [object!]
+    ][
+        if all [in pb 'hdr  not none? get in pb 'hdr][
+            pending-hdr: mk-variant get in pb 'hdr
+            hdr-pending?: true
+        ]
+        if all [in pb 'ftr  not none? get in pb 'ftr][
+            pending-ftr: mk-variant get in pb 'ftr
+            ftr-pending?: true
+        ]
     ]
 
     line-ascent: func [
@@ -1051,6 +1066,15 @@ report-view: make report-styles [
             page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
             page-y: draw-header active-hdr page-y date-str time-str datetime-str
             prev-line: last active-hdr/lines
+            after-hdr?: true
+        ]
+    ]
+
+    step-after-header: func [/local lm][
+        "Step the content cursor a normal line gap below the page header's last line."
+        if prev-line [
+            lm: line-ink prev-line :view-metrics
+            page-y: page-y - (lm/3 + line-gap-px)
         ]
     ]
 
@@ -1111,7 +1135,7 @@ report-view: make report-styles [
         ][
             either first-data [row-height first-data :view-metrics][row-h]
         ]
-        if (page-y - row-h - first-h - line-height) < page-bottom [new-page]
+        if (page-y - row-h - first-h - line-height) < page-bottom [new-page  step-after-header]
 
         draw-table-row page-y row-h table-left table-width boxed? alt? true 0 col-info []
         page-y: page-y - row-h
@@ -1121,10 +1145,11 @@ report-view: make report-styles [
         forall table-data [
             row-item: first table-data
             either all [object? row-item row-item/type = 'pagebreak][
+                apply-pagebreak-hf row-item
                 either empty? row-item/args [
-                    new-page
+                    new-page  step-after-header
                 ][
-                    if (page-y - (row-item/args/1 * line-height)) < page-bottom [new-page]
+                    if (page-y - (row-item/args/1 * line-height)) < page-bottom [new-page  step-after-header]
                 ]
                 row-h: header-row-h
                 draw-table-row page-y row-h table-left table-width boxed? alt? true 0 col-info []
@@ -1132,7 +1157,7 @@ report-view: make report-styles [
             ][
                 row-h: row-height row-item :view-metrics
                 if (page-y - row-h) < page-bottom [
-                    new-page
+                    new-page  step-after-header
                     row-h: header-row-h
                     draw-table-row page-y row-h table-left table-width boxed? alt? true 0 col-info []
                     page-y: page-y - row-h
@@ -1514,7 +1539,7 @@ report-view: make report-styles [
             col-idx: col-idx + col-rendered
             col-remaining: col-remaining - col-rendered
             page-y: page-y - col-max-h
-            if col-remaining > 0 [new-page]
+            if col-remaining > 0 [new-page  step-after-header]
         ]
     ]
 
@@ -1546,7 +1571,7 @@ report-view: make report-styles [
     generate: func [
         "Generate a multi-page report using draw dialect. Returns block of draw blocks."
         page-obj [object!] "Parsed page from parse-report"
-        /local first-line first-sz line paper ascent lm dh y0 ww
+        /local first-line first-sz line paper ascent lm dh y0 ww pb-hf
                hdr-ascent ftr-band hblk fblk a-h a-f hy bg-env
     ][
         ; restore this report's base font (generate resets it at the end, so a
@@ -1598,18 +1623,26 @@ report-view: make report-styles [
         if fblk [ftr-band: max ftr-band footer-height object [lines: fblk] :view-metrics]
         fblk: either ftr2 [ftr2/lines][none]
         if fblk [ftr-band: max ftr-band footer-height object [lines: fblk] :view-metrics]
-        foreach line page-obj/content/lines [
-            if object? line [
-                case [
-                    line/type = 'header [
-                        if not empty? line/lines [
-                            hdr-ascent: max hdr-ascent (line-ascent line/lines/1)
-                        ]
+        foreach it report-styles/hf-override-items page-obj/content/lines [
+            case [
+                it/type = 'header [
+                    if not empty? it/lines [
+                        hdr-ascent: max hdr-ascent (line-ascent it/lines/1)
                     ]
-                    line/type = 'footer [
-                        if not empty? line/lines [
-                            ftr-band: max ftr-band footer-height object [lines: line/lines] :view-metrics
-                        ]
+                ]
+                it/type = 'footer [
+                    if not empty? it/lines [
+                        ftr-band: max ftr-band footer-height object [lines: it/lines] :view-metrics
+                    ]
+                ]
+                it/type = 'pagebreak [
+                    pb-hf: get in it 'hdr
+                    if all [pb-hf  not empty? pb-hf][
+                        hdr-ascent: max hdr-ascent (line-ascent pb-hf/1)
+                    ]
+                    pb-hf: get in it 'ftr
+                    if all [pb-hf  not empty? pb-hf][
+                        ftr-band: max ftr-band footer-height object [lines: pb-hf] :view-metrics
                     ]
                 ]
             ]
@@ -1680,6 +1713,7 @@ report-view: make report-styles [
             page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
             page-y: draw-header active-hdr page-y date-str time-str datetime-str
             prev-line: last active-hdr/lines
+            after-hdr?: true
         ]
 
         ww: content-w
@@ -1703,7 +1737,7 @@ report-view: make report-styles [
                 ; (descent + gap); other blocks use half the line box.
                 if all [prev-line not prev-draw? not (all [object? line line/type = 'at])] [
                     lm: line-ink prev-line :view-metrics
-                    page-y: page-y - either line/type = 'draw [
+                    page-y: page-y - either any [line/type = 'draw  after-hdr?] [
                         lm/3 + line-gap-px
                     ][
                         lm/2 + line-gap-px
@@ -1723,6 +1757,7 @@ report-view: make report-styles [
                         _emit-draw line
                     ]
                     pagebreak [
+                        apply-pagebreak-hf line
                         either empty? line/args [
                             new-page
                         ][
@@ -1746,12 +1781,14 @@ report-view: make report-styles [
                     ; steps below the art (a following block skips the step)
                     either prev-draw? [prev-line: copy []][prev-line: none]
                 ]
+                unless any [line/type = 'at  line/type = 'pagebreak][after-hdr?: false]
             ][
                 if block? line [
                     track-box?: true
                     _emit-pairs line
                     track-box?: false
                     prev-draw?: false
+                    after-hdr?: false
                 ]
             ]
         ]

@@ -71,7 +71,15 @@ committed. Without it, the PDF render warns and fails.
   nested AT), BODY-only, and not allowed inside COLUMN/FRAME. AT images never
   page-break; undeclared widths are contained to the AT width.
 - **HEADER/FOOTER** contain text lines only. An in-body `HEADER`/`FOOTER` is a
-  running override applied from the **next page onward**.
+  running override applied from the **next page onward**. A `PAGEBREAK` may also
+  carry `[HEADER [...]]`/`[FOOTER [...]]` options (sugar for the override just
+  before the break) in BODY and in TABLE rows. Options live in `hdr`/`ftr` on the
+  PAGEBREAK object (`pagebreak-options-problem` validates them; `hf-override-items`
+  includes them in the header/footer band scan). The first content item on a page
+  is placed one normal line gap (`descent + line-gap-px`) below the header regardless
+  of type: `after-hdr?` is set by page setup/`new-page`, and TABLE/COLUMN
+  continuations call `step-after-header` after `new-page`. An empty header line is
+  the user's way to add more space.
 - **Tokens**: `<page>`, `<pages>`, `<now>` (replaced in header/body/footer). Escape
   a literal one with a backslash: `\<page>`, `\<now>`. For generated text (e.g. a
   `mold`ed source listing) apply that escaping yourself before using it as a value.

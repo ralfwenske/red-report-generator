@@ -1,5 +1,5 @@
 Red [
-    Title: "200 — Color Shades"
+    Title: "130 — Color Shades"
     Demo:  "Table showing integrated red color shades"
     Level: 1
     Needs: 'View

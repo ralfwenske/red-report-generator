@@ -1452,18 +1452,26 @@ report-pdf: make report-styles [
         if blk [ftr-band: max ftr-band footer-height object [lines: blk] :pdf-metrics]
         blk: either ftr2 [ftr2/lines][none]
         if blk [ftr-band: max ftr-band footer-height object [lines: blk] :pdf-metrics]
-        foreach line ctn/lines [
-            if object? line [
-                case [
-                    line/type = 'header [
-                        if not empty? line/lines [
-                            hdr-ascent: max hdr-ascent (line-ascent line/lines/1)
-                        ]
+        foreach it report-styles/hf-override-items ctn/lines [
+            case [
+                it/type = 'header [
+                    if not empty? it/lines [
+                        hdr-ascent: max hdr-ascent (line-ascent it/lines/1)
                     ]
-                    line/type = 'footer [
-                        if not empty? line/lines [
-                            ftr-band: max ftr-band footer-height object [lines: line/lines] :pdf-metrics
-                        ]
+                ]
+                it/type = 'footer [
+                    if not empty? it/lines [
+                        ftr-band: max ftr-band footer-height object [lines: it/lines] :pdf-metrics
+                    ]
+                ]
+                it/type = 'pagebreak [
+                    pb-hf: get in it 'hdr
+                    if all [pb-hf  not empty? pb-hf][
+                        hdr-ascent: max hdr-ascent (line-ascent pb-hf/1)
+                    ]
+                    pb-hf: get in it 'ftr
+                    if all [pb-hf  not empty? pb-hf][
+                        ftr-band: max ftr-band footer-height object [lines: pb-hf] :pdf-metrics
                     ]
                 ]
             ]
@@ -1499,6 +1507,7 @@ report-pdf: make report-styles [
         toc-pages: copy []
         hdr-locked?: ftr-locked?: false
         hdr-pending?: ftr-pending?: false
+        after-hdr?: false
         active-hdr: hdr1
         active-ftr: ftr1
 
@@ -1526,6 +1535,7 @@ report-pdf: make report-styles [
             page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
             page-y: emit-header page-content active-hdr page-y date-str time-str datetime-str
             prev-line: last active-hdr/lines
+            after-hdr?: true
         ]
 
         new-page: does [
@@ -1548,6 +1558,15 @@ report-pdf: make report-styles [
                 page-y: page-height - margin-top - (line-ascent active-hdr/lines/1)
                 page-y: emit-header page-content active-hdr page-y date-str time-str datetime-str
                 prev-line: last active-hdr/lines
+                after-hdr?: true
+            ]
+        ]
+
+        step-after-header: func [/local lm][
+            "Step the content cursor a normal line gap below the page header's last line."
+            if prev-line [
+                lm: line-ink prev-line :pdf-metrics
+                page-y: page-y - (lm/3 + line-gap-px)
             ]
         ]
 
@@ -1571,7 +1590,7 @@ report-pdf: make report-styles [
                 ; (descent + gap); other blocks use half the line box.
                 if all [prev-line not prev-draw? not (all [object? line line/type = 'at])] [
                     lm: line-ink prev-line :pdf-metrics
-                    page-y: page-y - either line/type = 'draw [
+                    page-y: page-y - either any [line/type = 'draw  after-hdr?] [
                         lm/3 + line-gap-px
                     ][
                         lm/2 + line-gap-px
@@ -1605,7 +1624,7 @@ report-pdf: make report-styles [
                         ][
                             either first-data [row-height first-data :pdf-metrics][row-h]
                         ]
-                        if (page-y - row-h - first-h - line-height) < page-bottom [new-page]
+                        if (page-y - row-h - first-h - line-height) < page-bottom [new-page  step-after-header]
 
                         emit-table-row page-content page-y row-h table-left table-width boxed? alt? true 0 col-info []
                         page-y: page-y - row-h
@@ -1615,10 +1634,18 @@ report-pdf: make report-styles [
                         forall table-data [
                             row-item: first table-data
                             either all [object? row-item row-item/type = 'pagebreak][
+                                if all [in row-item 'hdr  not none? get in row-item 'hdr][
+                                    pending-hdr: mk-hf get in row-item 'hdr
+                                    hdr-pending?: true
+                                ]
+                                if all [in row-item 'ftr  not none? get in row-item 'ftr][
+                                    pending-ftr: mk-hf get in row-item 'ftr
+                                    ftr-pending?: true
+                                ]
                                 either empty? row-item/args [
-                                    new-page
+                                    new-page  step-after-header
                                 ][
-                                    if (page-y - (row-item/args/1 * line-height)) < page-bottom [new-page]
+                                    if (page-y - (row-item/args/1 * line-height)) < page-bottom [new-page  step-after-header]
                                 ]
                                 row-h: header-row-h
                                 emit-table-row page-content page-y row-h table-left table-width boxed? alt? true 0 col-info []
@@ -1626,7 +1653,7 @@ report-pdf: make report-styles [
                             ][
                                 row-h: row-height row-item :pdf-metrics
                                 if (page-y - row-h) < page-bottom [
-                                    new-page
+                                    new-page  step-after-header
                                     row-h: header-row-h
                                     emit-table-row page-content page-y row-h table-left table-width boxed? alt? true 0 col-info []
                                     page-y: page-y - row-h
@@ -1860,10 +1887,18 @@ report-pdf: make report-styles [
                             col-idx: col-idx + col-rendered
                             col-remaining: col-remaining - col-rendered
                             page-y: page-y - col-max-h
-                            if col-remaining > 0 [new-page]
+                            if col-remaining > 0 [new-page  step-after-header]
                         ]
                     ]
                     pagebreak [
+                        if all [in line 'hdr  not none? get in line 'hdr][
+                            pending-hdr: mk-hf get in line 'hdr
+                            hdr-pending?: true
+                        ]
+                        if all [in line 'ftr  not none? get in line 'ftr][
+                            pending-ftr: mk-hf get in line 'ftr
+                            ftr-pending?: true
+                        ]
                         either empty? line/args [
                             new-page
                         ][
@@ -1986,6 +2021,7 @@ report-pdf: make report-styles [
                     ; steps below the art (a following block skips the step)
                     either prev-draw? [prev-line: copy []][prev-line: none]
                 ]
+                unless any [line/type = 'at  line/type = 'pagebreak][after-hdr?: false]
             ][
                 if block? line [
                     set-track-box true
@@ -2008,6 +2044,7 @@ report-pdf: make report-styles [
                     ]
                     set-track-box false
                     prev-draw?: false
+                    after-hdr?: false
                 ]
             ]
             unless all [object? line  any [line/type = 'frame  line/type = 'at]][box-finish]

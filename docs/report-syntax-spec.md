@@ -228,7 +228,8 @@ line-item    := [ value style-block? value style-block? … ]
 - Modifiers, in any order:
   - `BOX` — draw the outer table border and vertical rules between columns.
   - `ALT` — shade every second data row (`alt-row-gray`).
-- Rows may contain page-break items (`[PAGEBREAK]` or `[PAGEBREAK n]`); the table
+- Rows may contain page-break items (`[PAGEBREAK]`, `[PAGEBREAK n]`, optionally with
+  `[HEADER [...]]`/`[FOOTER [...]]` overrides); the table
   then continues on a new page and the **header row is repeated**.
 - **A table splits across pages like a COLUMN**: the header row and as many rows as fit are
   drawn, then on the next page the **header row is repeated** and the remaining rows continue.
@@ -336,6 +337,21 @@ line-item    := [ value style-block? value style-block? … ]
 
 `[PAGEBREAK n]` — break only if fewer than `n` lines fit in the remaining space
 (conditional break).
+
+Either form may carry up to one `[HEADER [...]]` and one `[FOOTER [...]]` option:
+
+```red
+[PAGEBREAK
+    [HEADER [["Continued" [b]] "" "Page <page> of <pages>" [b]]]
+    [FOOTER [["Section 2" [i]]]]
+]
+```
+
+These are **sugar** for an in-body `HEADER`/`FOOTER` immediately before the break:
+they stage the running header/footer, then start the page. The override applies from
+the page created by this break onward and persists until the next override (in-body,
+or attached to another break). Options are order-independent, at most one of each,
+and each takes one lines block. They are valid in BODY and in PAGEBREAK rows inside TABLE; not inside HEADER/FOOTER.
 
 ## 5. Styles
 
@@ -665,6 +681,18 @@ Overrides may be written anywhere in the body; the effective header/footer for a
 the section default for that page (page 1 vs page 2+, §10.1) with the most recent override
 seen before the page began. An override's height contributes to the reserved band, so
 switching to a taller header/footer never clips the top or bottom margin.
+
+### 10.3 Spacing below the header
+
+The first content item on a page starts one **normal line gap** below the header's last
+line box (the same gap used between text lines), whether that first item is a text line,
+a `TABLE`, an `IMAGE` or another block. A `TABLE`/`COLUMN` continuation that starts a new
+page uses the same gap before drawing its repeated header row. Add an empty line to the
+header if you want more space.
+
+A `PAGEBREAK` may carry `[HEADER [...]]`/`[FOOTER [...]]` options (§4.5); they are sugar
+for the corresponding in-body override immediately before the break and work in `BODY`
+and in `TABLE` page-break rows.
 
 
 ## 11. Evaluation model

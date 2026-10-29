@@ -2175,6 +2175,28 @@ report-styles: context [
         r
     ]
 
+    hf-override-items: func [
+        {Collect HEADER/FOOTER items and PAGEBREAK [HEADER]/[FOOTER] overrides
+         from BODY items, including PAGEBREAK rows nested in TABLE/COLUMN items.}
+        items [block!]
+        /local out stack it i
+    ][
+        out: copy []
+        stack: copy items
+        i: 1
+        while [i <= length? stack][
+            it: pick stack i
+            i: i + 1
+            if object? it [
+                if find [header footer pagebreak] it/type [append/only out it]
+                if find [table column] it/type [
+                    foreach row it/lines [if object? row [append stack row]]
+                ]
+            ]
+        ]
+        out
+    ]
+
     ;=== Predefined colour shades ==========================================
     ; 0 = lightest .. 9 = darkest, one row per family (gray red pink grape
     ; violet indigo blue cyan teal green lime yellow orange). This is the

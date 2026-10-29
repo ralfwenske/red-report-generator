@@ -217,6 +217,42 @@ parse-section: func [
                 pos: next pos
                 continue
             ]
+            ; PAGEBREAK: optional reserve-lines integer, then optional
+            ; [HEADER lines] / [FOOTER lines] overrides. They are sugar for an
+            ; in-body HEADER/FOOTER immediately before the break: stage the
+            ; running header/footer, then start the next page.
+            if kw-type = 'pagebreak [
+                while [all [not tail? inner not block? inner/1 not paren? inner/1]][
+                    append kw-args norm-arg inner/1
+                    inner: next inner
+                ]
+                pb-hdr: none  pb-ftr: none  leftover: copy []
+                while [all [not tail? inner block? inner/1]][
+                    pb-opt: inner/1
+                    either all [not empty? pb-opt word? pb-opt/1 (length? pb-opt) > 1][
+                        pb-kw: to word! pb-opt/1
+                        case [
+                            pb-kw = 'header [
+                                either pb-hdr [append/only leftover pb-opt][
+                                    pb-hdr: parse-section/base copy pick pb-opt 2 bs
+                                ]
+                            ]
+                            pb-kw = 'footer [
+                                either pb-ftr [append/only leftover pb-opt][
+                                    pb-ftr: parse-section/base copy pick pb-opt 2 bs
+                                ]
+                            ]
+                            true [append/only leftover pb-opt]
+                        ]
+                    ][
+                        append/only leftover pb-opt
+                    ]
+                    inner: next inner
+                ]
+                append/only result object [type: kw-type args: kw-args img: none lines: none extra: leftover hdr: pb-hdr ftr: pb-ftr]
+                pos: next pos
+                continue
+            ]
             ; args: values up to the first block or paren (the items block)
             while [all [not tail? inner not block? inner/1 not paren? inner/1]][
                 append kw-args norm-arg inner/1
@@ -887,6 +923,32 @@ parse-section: func [
         none
     ]
 
+    pagebreak-options-problem: func [
+        "Check a PAGEBREAK object's [HEADER ...]/[FOOTER ...] options; message or none."
+        ln [object!] sec-name [string!] i [integer!]
+        /local r msg kw nm
+    ][
+        if not empty? ln/extra [
+            return rejoin [sec-name " line " i ": PAGEBREAK takes at most one [HEADER [...]] and one [FOOTER [...]], and nothing else"]
+        ]
+        foreach kw [hdr ftr][
+            if get in ln kw [
+                nm: either kw = 'hdr ["HEADER"]["FOOTER"]
+                if empty? get in ln kw [
+                    return rejoin [sec-name " line " i ": PAGEBREAK " nm " override has no lines"]
+                ]
+                foreach r get in ln kw [
+                    unless block? r [
+                        return rejoin [sec-name " line " i ": PAGEBREAK " nm " lines must be text lines"]
+                    ]
+                    msg: check-line-styles sec-name i r
+                    if msg [return msg]
+                ]
+            ]
+        ]
+        none
+    ]
+
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
@@ -1069,7 +1131,10 @@ parse-section: func [
                                             if msg [return msg]
                                         ]
                                     ]
-                                    all [object? r r/type = 'pagebreak][true]
+                                    all [object? r r/type = 'pagebreak][
+                                        msg: pagebreak-options-problem r sec-name i
+                                        if msg [return msg]
+                                    ]
                                     true [
                                         return rejoin [sec-name " line " i ": COLUMN rows may be text or IMAGE, got " mold r]
                                     ]
@@ -1088,8 +1153,11 @@ parse-section: func [
                                 unless any [block? r all [object? r r/type = 'pagebreak]] [
                                     return rejoin [sec-name " line " i ": TABLE row " row " must be a line block, got " mold r]
                                 ]
-                                if block? r [
+                                either block? r [
                                     msg: check-line-styles sec-name i r
+                                    if msg [return msg]
+                                ][
+                                    msg: pagebreak-options-problem r sec-name i
                                     if msg [return msg]
                                 ]
                             ]
@@ -1097,6 +1165,8 @@ parse-section: func [
                         pagebreak [
                             msg: schema-args-problem 'pagebreak ln/args
                             if msg [return rejoin [sec-name " line " i ": " msg]]
+                            msg: pagebreak-options-problem ln sec-name i
+                            if msg [return msg]
                         ]
                         draw [
                             unless sec-name = "BODY" [

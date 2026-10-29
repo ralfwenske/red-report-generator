@@ -10,13 +10,35 @@ Red [
 ; every second data row. A table that runs out of room continues on the next
 ; page and repeats the header; [PAGEBREAK] forces that here.
 ;
-report: [
+report: [a5 landscape
     [HEADER [
-        ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]
+        [ "Prepared <now>"  "***" "Page <page> of <pages>"  ]
         []
     ]]
-    [BODY [
-        ["Widget sales" [f2]]
+    [BODY [      
+        [TABLE BOX ALT [
+            ["Product" [< px/200] "Qty" [> px/100] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
+            ["Widget A" 120 25.00 3000.00]
+            ["Widget B" 45 42.00 1890.00]
+            ["Widget C" 12 35.00 420.00]
+            ["Widget D" 7 199.00 1393.00]
+            ["Widget A" 120 25.00 3000.00]
+            ["Widget B" 45 42.00 1890.00]
+            ["Widget C" 12 35.00 420.00]
+            ["Widget D" 7 199.00 1393.00]
+            ["Widget A" 120 25.00 3000.00]
+            ["Widget B" 45 42.00 1890.00]
+            ["Widget C" 12 35.00 420.00]
+            ["Widget D" 7 199.00 1393.00]
+            [PAGEBREAK
+                [HEADER [["Widget sales (continued)"  "" "Page <page> of <pages>" ] []]]
+                [FOOTER [["continued" [i] "" "Page <page> of <pages>" [f3]]]]
+            ]
+            ["Gadget X" 3 149.50 448.50]
+            ["Gadget Y" 9 12.75 114.75]
+            ["Gadget Z" 9 12.75 114.75 [b]]
+            ["TOTALS" [b] "" "" 7266.25 [b money]]
+        ]]
         [TABLE [
             ["Product" [< ch/18] "Qty" [> ch/6] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
             ["Widget A" 120 25.00 3000.00]
@@ -29,18 +51,7 @@ report: [
             ["Widget C" 12 35.00 420.00]
             ["Widget D" 7 199.00 1393.00]
         ]]
-        [TABLE BOX ALT [
-            ["Product" [< px/200] "Qty" [> px/100] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
-            ["Widget A" 120 25.00 3000.00]
-            ["Widget B" 45 42.00 1890.00]
-            ["Widget C" 12 35.00 420.00]
-            ["Widget D" 7 199.00 1393.00]
-            [PAGEBREAK]
-            ["Gadget X" 3 149.50 448.50]
-            ["Gadget Y" 9 12.75 114.75]
-            ["Gadget Z" 9 12.75 114.75 [b]]
-            ["TOTALS" [b] "" "" 7266.25 [b money]]
-        ]]
+
     ]]
 ]
 
