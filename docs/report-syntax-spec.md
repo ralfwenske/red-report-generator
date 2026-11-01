@@ -50,10 +50,11 @@ block becomes that section:
 
 ```text
 page        := [ paper-clause? item … ]        ; paper clause, then items in any order
-paper-clause := paper-size? orientation? margin? …
+paper-clause := paper-size? orientation? margin? viewer? …
 paper-size   := a4 | letter | legal | a3 | a5 | <WxH pair>   ; default a4
 orientation  := landscape | portrait                          ; default portrait
 margin       := top/N | bottom/N | left/N | right/N | margin/N   ; N in points, default 50
+viewer       := viewer/<WxH pair>            ; initial viewer window size (View only)
 
 section-item := [HEADER [items] [items2]?]     ; optional; items2 = page 2 and later
               | [BODY   [items]]               ; required
@@ -78,6 +79,9 @@ item         := … | [DRAW H? [draw…]]         ; BODY-only foreground art (Ad
   the last size and last orientation win. For margins, `margin/N` sets a uniform default
   for all four sides and an individual `top/N`/`bottom/N`/`left/N`/`right/N` always overrides
   it — in **any order** (`[margin/25 top/10 …]` and `[top/10 margin/25 …]` give the same result).
+- `viewer/WxH` sets the **initial viewer window size** (View only; the window stays
+  resizable and is clamped to the screen work area). Default `895x910`. It does not
+  affect the page or the PDF. Example: `[a4 landscape margin/20 viewer/900x1000 …]`.
   A **pair** (`600x800`) sets a custom
   width×height in points; margins are in points too (`top/20`, `right/10`, `margin/25`
   sets all four). Unknown leading words are invalid (reported by `validate-report`).
@@ -179,8 +183,10 @@ line-item    := [ value style-block? value style-block? … ]
 - **Container style args.** Sections (`HEADER`/`BODY`/`FOOTER`) and `TABLE` accept style
   words as args; they style the whole container and its contents. The style inherits
   down: a section style reaches every line, table row/cell and column cell inside it;
-  a table style reaches its rows/cells. Each deeper level merges on top (decorations
-  add; the deeper value wins on colors/alignment/format/width/family/size). Examples:
+  a table style reaches its rows/cells. Each deeper level merges on top: decorations
+  add; colours override **by role** — font, background, frame — and unspecified roles
+  inherit (a row `[black green]` keeps its green background under a cell `[red]`);
+  alignment/format/width/family/size follow the deeper value. Examples:
   `[BODY b [ … ]]`, `[TABLE b BOX ALT [rows]]`.
 - **Negation `!X`.** Any style may carry `!b`/`!i`/`!u`/`!m`/`!s`/`!<`/`!>`/… which drops
   that attribute inherited from **all** higher levels. E.g. a row `[[!b] …]` inside a
@@ -205,8 +211,9 @@ line-item    := [ value style-block? value style-block? … ]
   parser tells a style block apart from a nested line).
 - A **leading style-block** as the line's first element applies to *every* value on the
   line; a value's own style-block is **merged on top of it** — decorations like
-  `b`/`i`/`u` add, and the value wins on colors, alignment, format, width, font
-  family and font size. A sized word sets family and size together, so a value can
+  `b`/`i`/`u` add; colours override by role (font/background/frame, with unset roles
+  inherited); and the value wins on alignment, format, width, font family and font
+  size. A sized word sets family and size together, so a value can
   override either or both: row `[s/10]` with value style `[ss/7 i]` gives sans 7
   italic. Example: `[[b red] "Total" "Δ" [i] 5123.88 [money]]` — bold red "Total",
   bold-italic red "Δ", and a bold-red money number. Works for table rows and column
@@ -541,9 +548,10 @@ The header row's style blocks configure each column:
 | `blank` | suppress `0` values in this column |
 
 Data rows may override per-cell: the cell's own style block is merged with the column
-defaults (column `b` is inherited; the first tuple is used as the cell's font color;
-`blank`/`s1000`/`money` are honored from either source). Alignment/format from
-the column spec win unless overridden by `<`/`>`/`^` in the cell.
+defaults (column `b` is inherited; the cell's first tuple overrides the font colour,
+further tuples override background/frame, and roles the cell does not set inherit from
+the column/row/table; `blank`/`s1000`/`money` are honored from either source).
+Alignment/format from the column spec win unless overridden by `<`/`>`/`^` in the cell.
 
 ## 7. Units
 
@@ -632,6 +640,12 @@ no depth argument):
   re-wrap the line.
 - The entry count comes from the content, so the TOC's height is fixed before page
   numbers are filled — pagination is stable. `TOC` is `BODY`-only.
+- Headings in a `PAGEBREAK`-attached `HEADER` override (`[PAGEBREAK [HEADER [...]]]`,
+  §4.5) also register: they enter the TOC at the break's position and take the page the
+  header first appears on. This works for **unconditional** breaks in `BODY` and in
+  `TABLE` page-break rows. Conditional `[PAGEBREAK n [HEADER [...]]]` is not collected
+  (its page is not known when the TOC is expanded), nor are headings in ordinary
+  in-body `HEADER`/`FOOTER` overrides.
 
 ## 10. Headers and footers
 
@@ -831,6 +845,12 @@ report-pdf/make-font styles size                  ; set the global base font (PD
 report-view/make-font/line styles size factor     ; … and the line-spacing factor
 report-pdf/make-font/line styles size factor
 ```
+
+The viewer renders pages for display. In **Fit Width** the page is scaled to the
+viewport width, so narrowing the window makes the page smaller (it never crops);
+vertical wheel/arrow scrolling is enabled exactly while the scaled page is taller
+than the viewport. Use `viewer/WxH` in the paper clause for a larger initial window
+when you want a tall page to start scrolled.
 
 `make-font` sets the report's **global base font**: familiar style words
 (`b i u s m f1-f4 h1-h3`, `link/N`, colours — see §5.2) plus a size in points, e.g.

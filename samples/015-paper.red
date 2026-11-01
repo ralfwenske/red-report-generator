@@ -13,7 +13,7 @@ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVWXYZ ABCDEFGHIJKL MNOPQRSTUVW
 }
 
 report: compose/deep [
-    a4 landscape margin/20 left/50
+    a4 landscape margin/20 left/50 viewer/900x800   ; initial viewer window size
     [HEADER [
         ["ACME Corp" [f1 red] "Quarterly Report" [f2]]
         ["Prepared <now>" [i] "" "Page <page> of <pages>" [b]]

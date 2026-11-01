@@ -84,7 +84,11 @@ committed. Without it, the PDF render warns and fails.
   a literal one with a backslash: `\<page>`, `\<now>`. For generated text (e.g. a
   `mold`ed source listing) apply that escaping yourself before using it as a value.
 - **TOC**: `[TOC [pattern lines]]`; `<hN>`/`<t-page>` placeholders; `link/toc` in a
-  pattern style makes entries clickable (View-only jump).
+  pattern style makes entries clickable (View-only jump). Headings in an unconditional
+  `[PAGEBREAK [HEADER [...]]]` also register (BODY and TABLE page-break rows): the TOC
+  lists them at the break position with the header's first page number. Conditional
+  `[PAGEBREAK n [HEADER ...]]` and in-body HEADER/FOOTER headings are not collected.
+  `expand-tocs` collects them; the renderers' `register-pb-headings` records their pages.
 - **Metrics**: a line box is split into true ascent/descent with
   `report-styles/box-ascent-frac`; do not reintroduce “ascent = line-box height”.
   This is what keeps mixed font families on one baseline. On Windows and macOS,
@@ -145,6 +149,11 @@ it captures `what` before defining its helpers.
   picks them up locally if present.
 - Samples use `if exists? %samples/ [change-dir %samples/]`; asset paths are
   `%../assets/...`.
+- **Colour merging is role-wise.** `merge-styles` (via `merge-color-roles`) lets a
+  deeper style override only the colour roles it provides — font, background, frame —
+  while unset roles inherit. A row `[black green]` therefore keeps its green
+  background under a cell `[red]` (font red). Decorations are additive; alignment,
+  format, width, family and size take the deeper value.
 - `tests/check.red` stubs `show-report` (returns `""`) and `alert` (no-op), and
   evaluates each sample with the samples dir as cwd.
 - **Do not `compose/deep` the whole report.** `parse-report` already composes the
@@ -179,6 +188,12 @@ it captures `what` before defining its helpers.
   before changing the viewer; the page raster/PDF is the ground truth. The
   opaque page canvas, image-dirty toggle, and first-paint timer remain as
   harmless guards for older builds; current Red does not need them to paint.
+- **Viewer window size**: a report's paper clause may set `viewer/WxH`; `show-viewer`
+  uses it as the initial `size` (clamped to `system/view/screens/1/size`, minimum
+  200x150; default 895x910). The window stays resizable. In Fit Width the page is
+  scaled to the viewport width; vertical scrolling is possible only while the scaled
+  page is taller than the viewport (`max-scroll = disp-h - vp-h`), so a wider window
+  (or a taller/aspect-tall page) enables scrolling and narrowing removes it.
 - **Sampler reentrancy / cwd**: a sample's modal viewer can still let the sampler
   window receive events on Windows. `render-selected` sets `rendering?`, disables
   the list, and re-enables it afterwards; `select-item` and the other handlers bail

@@ -1570,6 +1570,18 @@ report-pdf: make report-styles [
             ]
         ]
 
+        register-pb-headings: func [pb [object!] /local hl][
+            "Record TOC pages for h1/h2/h3 lines in a PAGEBREAK header override."
+            if all [in pb 'hdr  not none? get in pb 'hdr][
+                foreach hl get in pb 'hdr [
+                    if (report-styles/line-heading hl) > 0 [
+                        toc-hcount: toc-hcount + 1
+                        append toc-pages page-num
+                    ]
+                ]
+            ]
+        ]
+
         ww: max 1 (page-width - margin-left - margin-right)
         foreach line ctn/lines [
             box-reset
@@ -1644,6 +1656,7 @@ report-pdf: make report-styles [
                                 ]
                                 either empty? row-item/args [
                                     new-page  step-after-header
+                                    register-pb-headings row-item
                                 ][
                                     if (page-y - (row-item/args/1 * line-height)) < page-bottom [new-page  step-after-header]
                                 ]
@@ -1901,6 +1914,7 @@ report-pdf: make report-styles [
                         ]
                         either empty? line/args [
                             new-page
+                            register-pb-headings line
                         ][
                             if (page-y - (line/args/1 * line-height)) < page-bottom [new-page]
                         ]

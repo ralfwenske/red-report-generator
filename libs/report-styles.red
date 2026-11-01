@@ -405,8 +405,28 @@ report-styles: context [
         ]
     ]
 
+    merge-color-roles: func [
+        {Merge colour lists by role: font, background, frame. Extra colours
+         override only the roles they provide; the remaining base colours are
+         inherited (so a cell colour like [red] keeps a row's background).}
+        base [block!] extra [block!]
+        /local out i
+    ][
+        out: copy base
+        if not empty? extra [
+            repeat i length? extra [
+                either i <= length? out [
+                    poke out i extra/:i
+                ][
+                    append out extra/:i
+                ]
+            ]
+        ]
+        out
+    ]
+
     merge-styles: func [
-        "Merge a line (base) style with a per-value style: per-value wins on colors, alignment, family, size, heading, format, width; decorations (b i u ...) are additive."
+        "Merge a line (base) style with a per-value style: per-value colours override the roles (font, background, frame) they provide, other colours inherit; per-value wins on alignment, family, size, heading, format, width; decorations (b i u ...) are additive."
         base [block!] extra [block!]
         /local bs es bd bc ed ec ov out s has-width? ndrops new-bd
                fam fss xfam xsize newfam newsize keep cleaned w fssw redundant
@@ -432,7 +452,7 @@ report-styles: context [
         if empty? ed [
             ; extra has no directives (only colors and/or negations): base directives
             ; plus the extra color if any, else the base color
-            return append copy bd either empty? ec [bc][ec]
+            return append copy bd either empty? ec [bc][merge-color-roles bc ec]
         ]
         ; family and font-size the extra defines (the first of each wins). The
         ; family is stored as its token (s / m / ss) so it can be recombined with a size.
@@ -506,7 +526,7 @@ report-styles: context [
             ]
             unless redundant [append cleaned s]
         ]
-        append cleaned either empty? ec [bc][ec]
+        append cleaned either empty? ec [bc][merge-color-roles bc ec]
         cleaned
     ]
 
@@ -911,6 +931,19 @@ report-styles: context [
         out
     ]
 
+    collect-hdr-headings: func [
+        "Append [level text] for each h1/h2/h3 line in a PAGEBREAK header override."
+        hdr [block! none!] into [block!]
+        /local hl hd
+    ][
+        if hdr [
+            foreach hl hdr [
+                hd: line-heading hl
+                if hd > 0 [append/only into reduce [hd (toc-heading-text hl)]]
+            ]
+        ]
+    ]
+
     expand-tocs: func [
         "Collect h1/h2/h3 headings in a parsed page's BODY and replace each TOC item with its expanded lines (in place). Called by the renderers, after validation."
         page-obj [object!]
@@ -918,9 +951,29 @@ report-styles: context [
     ][
         headings: copy []
         foreach it page-obj/content/lines [
-            if block? it [
+            either block? it [
                 hd: line-heading it
                 if hd > 0 [append/only headings reduce [hd (toc-heading-text it)]]
+            ][
+                if object? it [
+                    case [
+                        ; headings in a PAGEBREAK-attached HEADER are TOC entries at
+                        ; the break position (unconditional breaks only: a conditional
+                        ; break may not fire, so its page is unknown up front)
+                        it/type = 'pagebreak [
+                            if all [empty? it/args  in it 'hdr][
+                                collect-hdr-headings get in it 'hdr headings
+                            ]
+                        ]
+                        it/type = 'table [
+                            foreach row it/lines [
+                                if all [object? row  row/type = 'pagebreak  empty? row/args  in row 'hdr][
+                                    collect-hdr-headings get in row 'hdr headings
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
             ]
         ]
         out: copy []

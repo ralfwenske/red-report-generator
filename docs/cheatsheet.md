@@ -27,7 +27,7 @@ The **first element** decides what a block is:
 ```red
 [
     ; --- optional paper clause (leading words / pair) ---
-    a4  landscape  margin/20  top/25  right/15  …
+    a4  landscape  margin/20  top/25  right/15  viewer/900x1000  …
 
     [DRAW-BG 3 [ …raw draw… ]]          ; optional, behind every page
     [HEADER style-words? [lines] [lines2]?]   ; optional
@@ -45,6 +45,7 @@ The **first element** decides what a block is:
 | `landscape` / `portrait` | orientation (default portrait) |
 | `margin/20` | uniform margin, all four sides (default 50) |
 | `top/20` `bottom/10` `left/15` `right/15` | one side; always overrides `margin/N`, in any order |
+| `viewer/900x1000` | initial viewer window size (View only, resizable, clamped to the screen; default 895x910) |
 
 Paths are the only accepted spelling: `margin/20`, `top/20`, `px/80`, `ss/9`.
 Legacy `-N` words (`margin-20`, `px-80`, `ss-9`) and `#Npx`/`#Nch` width tags are
@@ -99,6 +100,7 @@ Notes:
 
 - **Leading style block** = base style for every value on the line.
 - Each value may be followed by its **own style block**, merged on top of the line style.
+  Colours merge **by role** (font, background, frame); roles not set by the inner block inherit.
 - Values: `string` `number` `date` `tag` or `none` (empty). Computed values go in a
   paren: `(now)`, `(total)`. A bare word is rejected (except `none`).
 - `[]` (empty block) is a **blank line** — same as `[""]`.
@@ -165,6 +167,10 @@ Tuples (`255.165.0`) or colour words (`red`, `blue`, `coffee`, …). Order defin
 | 1st colour | font |
 | 2nd colour | background |
 | 3rd colour | frame/border |
+
+When styles merge (section/table/row/column → line/cell), colours override by role:
+1st = font, 2nd = background, 3rd = frame; roles omitted by the inner block inherit
+(e.g. row `[black green]` + cell `[red]` = red font on green).
 
 **Shaded palette** (`0` lightest … `9` darkest) is provided globally by the library —
 no `do load` needed:
@@ -265,6 +271,9 @@ Tokens are replaced **everywhere** (header, body/content, footer) by both render
 - `link/toc` in a pattern style block makes each entry **clickable** (View only):
   clicking jumps to the heading's page. It implies a link underline; add `!u` to
   suppress it.
+- Headings in an **unconditional** `[PAGEBREAK [HEADER [...]]]` also register (BODY and
+  TABLE page-break rows), at the page where that header first appears. Conditional
+  `[PAGEBREAK n [HEADER ...]]` and ordinary in-body header/footer headings are not collected.
 
 ---
 

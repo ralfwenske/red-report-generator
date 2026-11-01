@@ -131,6 +131,21 @@ report-view: make report-styles [
         ]
     ]
 
+    register-pb-headings: func [
+        "Record TOC pages for h1/h2/h3 lines in a PAGEBREAK header override (page-num is the new page)."
+        pb [object!]
+        /local hl
+    ][
+        if all [in pb 'hdr  not none? get in pb 'hdr][
+            foreach hl get in pb 'hdr [
+                if (report-styles/line-heading hl) > 0 [
+                    toc-hcount: toc-hcount + 1
+                    append toc-pages page-num
+                ]
+            ]
+        ]
+    ]
+
     line-ascent: func [
         "Measured ascent of a parsed line block (for header top clamping)."
         line [block!]
@@ -1148,6 +1163,7 @@ report-view: make report-styles [
                 apply-pagebreak-hf row-item
                 either empty? row-item/args [
                     new-page  step-after-header
+                    register-pb-headings row-item
                 ][
                     if (page-y - (row-item/args/1 * line-height)) < page-bottom [new-page  step-after-header]
                 ]
@@ -1760,6 +1776,7 @@ report-view: make report-styles [
                         apply-pagebreak-hf line
                         either empty? line/args [
                             new-page
+                            register-pb-headings line
                         ][
                             if (page-y - (line/args/1 * line-height)) < page-bottom [new-page]
                         ]
@@ -1950,7 +1967,7 @@ report-view: make report-styles [
                win btn-first btn-prev btn-next btn-last page-label fit-cb
                clip-f img-f p parentsize vp-w vp-h
                max-scroll delta page-pos new-hs hs pn target
-               render-pct last-pn last-zoom last-img pw ph ratio disp-w disp-h
+               render-pct last-pn last-zoom last-img pw ph ratio disp-w disp-h viewer-size scr
     ][
         current-page: 1
         current-img: none
@@ -1970,6 +1987,18 @@ report-view: make report-styles [
 
         sv-page-width: page-width
         sv-page-height: page-height
+        ; initial window size: a report may set `viewer/PAIR` in its paper clause.
+        ; Default 895x910; clamp to the screen so a too-large request cannot hide
+        ; the window. The window is resizable as before.
+        viewer-size: either all [in page-obj 'viewer-size  pair? page-obj/viewer-size][
+            page-obj/viewer-size
+        ][
+            895x910
+        ]
+        scr: system/view/screens/1/size
+        viewer-size: as-pair
+            max 200 min viewer-size/x (scr/x - 40)
+            max 150 min viewer-size/y (scr/y - 80)
         sv-page-hotspots: copy page-hotspots
         forall sv-page-hotspots [
             change/only sv-page-hotspots either first sv-page-hotspots [copy first sv-page-hotspots][none]
@@ -2084,7 +2113,7 @@ report-view: make report-styles [
 
         win: layout/flags  [
             title display-title
-            size 895x910
+            size viewer-size
             backdrop 230.230.230
             style pg-btn: button 230.230.230 35x20 font [color: red] bold
             on-key [

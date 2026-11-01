@@ -455,7 +455,7 @@ parse-section: func [
          Default paper is a4 portrait. Parenthesised expressions are evaluated here
          (DRAW/DRAW-BG ops kept deferred), so a literal report needs no compose/deep.}
         page [block!]
-        /local items h-args h-lines h-lines2 c-args c-lines f-args f-lines f-lines2 h-extra c-extra f-extra has-body bg-args bg-lines
+        /local items h-args h-lines h-lines2 c-args c-lines f-args f-lines f-lines2 h-extra c-extra f-extra has-body bg-args bg-lines v-size
                size-n orient-n clause pos d t-n b-n l-n r-n m-u ms n m-top m-bottom m-left m-right hs fs hst fst it
     ][
         ; evaluate the template's parens once (DRAW/DRAW-BG ops stay deferred)
@@ -464,13 +464,15 @@ parse-section: func [
         size-n: 'a4
         orient-n: 'portrait
         t-n: b-n: l-n: r-n: m-u: none
+        v-size: none
         clause: copy []
         pos: page
-        while [all [not tail? pos  any [word? pos/1  pair? pos/1]]][
+        while [all [not tail? pos  any [word? pos/1  pair? pos/1  path? pos/1]]][
             d: pos/1
             append/only clause d
             case [
                 pair? d                          [size-n: d]
+                all [path? d  (length? d) = 2  d/1 = 'viewer  pair? d/2] [v-size: d/2]
                 all [word? d  find paper-sizes to word! d]   [size-n: to word! d]
                 all [word? d  d = 'landscape]    [orient-n: 'landscape]
                 all [word? d  d = 'portrait]     [orient-n: 'portrait]
@@ -532,6 +534,7 @@ parse-section: func [
         object [
             paper:       reduce [size-n orient-n]
             paper-args:  clause
+            viewer-size: v-size
             margin:      object [top: m-top bottom: m-bottom left: m-left right: m-right]
             header:  object [args: h-args lines: h-lines lines2: h-lines2 extra: h-extra]
             content: object [args: c-args lines: c-lines extra: c-extra]
@@ -952,7 +955,7 @@ parse-section: func [
     set 'validate-report func [
         {Validate a report page description. Returns "" if OK, else a message describing the first problem.}
         page [block!]
-        /local err pg msg ln i row a bg parsed w sch2 x2 k l2 j cap-line wl dash r sec-name sec sec-kw
+        /local err pg msg ln i row a bg parsed w sch2 x2 k l2 j cap-line wl dash r sec-name sec sec-kw d vseen
     ][
         ;--- Legacy dash notation is rejected: use paths (ss/8, px/80, margin/10) ---
         dash: legacy-dash-problem page
@@ -977,16 +980,25 @@ parse-section: func [
         ]
 
         ;--- Paper clause ---
+        vseen: 0
         foreach d pg/paper-args [
-            unless any [
-                pair? d
-                all [word? d find paper-sizes to word! d]
-                all [word? d find [landscape portrait] d]
-                all [word? d parse-margin-spec d]
+            either all [path? d  (length? d) = 2  d/1 = 'viewer  pair? d/2] [
+                vseen: vseen + 1
+                unless all [d/2/x >= 200  d/2/y >= 200][
+                    return rejoin ["viewer size must be at least 200x200, got " mold d/2]
+                ]
             ][
-                return rejoin ["Paper directive '" mold d "' is not a size (a4 letter legal a3 a5), a WxH pair, landscape/portrait, or a margin (top/bottom/left/right|margin-N)"]
+                unless any [
+                    pair? d
+                    all [word? d find paper-sizes to word! d]
+                    all [word? d find [landscape portrait] d]
+                    all [word? d parse-margin-spec d]
+                ][
+                    return rejoin ["Paper directive '" mold d "' is not a size (a4 letter legal a3 a5), a WxH pair, landscape/portrait, a margin (top/bottom/left/right|margin-N), or a viewer size (viewer/PAIR)"]
+                ]
             ]
         ]
+        if vseen > 1 [return "Paper clause takes at most one viewer/PAIR size"]
 
         ;--- DRAW-BG (optional): one draw block, optional integer pixel-density arg ---
         bg: pg/draw-bg
