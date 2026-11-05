@@ -936,7 +936,7 @@ report-view: make report-styles [
         col-info [block!] row [block!]
         /local box-top text-y col-titles col-widths col-aligns col-formats col-bolds col-blanks num-cols
                col-x col-i c-w col-align col-format col-text merged raw-val cell-styles
-               final-styles text-styles text cell-fmt cell-bg cell-fc
+               final-styles text-styles text cell-fmt cell-bg cell-fc hdr-styles hdr-src
                hs-before hs-after hs-i hs col-r
     ][
         box-top: y - rh
@@ -953,10 +953,18 @@ report-view: make report-styles [
         either is-header [
             draw-filled-rect tl box-top tw rh header-gray
         ][
-            if all [alt? (row-num // 2) = 0] [
-                draw-filled-rect tl box-top tw rh alt-row-gray
+            ; ALT: shade every second data row; the other rows are painted white
+            ; (not left transparent) so an ALT table fully covers a DRAW-BG image.
+            if alt? [
+                draw-filled-rect tl box-top tw rh either (row-num // 2) = 0 [alt-row-gray][1.0]
             ]
         ]
+
+        ; header text style: bold by default, over the header row's leading style
+        ; block (if any). The block is separate from the column specs, so header
+        ; styles never leak into the column defaults.
+        hdr-src: either (length? col-info) >= 8 [pick col-info 8][none]
+        hdr-styles: resolve-colors merge-styles ['b] any [hdr-src copy []]
 
         col-x: tl
         col-i: 1
@@ -967,7 +975,7 @@ report-view: make report-styles [
 
             either is-header [
                 col-text: pick col-titles col-i
-                draw-styled-text (col-x + cell-pad) text-y col-text (c-w - (cell-pad * 2)) col-align ['b]
+                draw-styled-text (col-x + cell-pad) text-y col-text (c-w - (cell-pad * 2)) col-align hdr-styles
             ][
                 merged: _merge-cell-styles pick col-bolds col-i col-i row
                 raw-val: merged/1
@@ -1135,6 +1143,7 @@ report-view: make report-styles [
 
         header-row: table-rows/1
         col-info: parse-columns header-row
+        append/only col-info either in line 'hstyle [line/hstyle][none]
 
         table-left: margin-left
         table-width: 0

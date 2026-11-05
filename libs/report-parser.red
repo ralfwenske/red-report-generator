@@ -68,7 +68,7 @@ parse-section: func [
      Uniform item grammar: [known-word args... [items]?]  |  [value [styles]? ...]}
     blk [block!]
     /base bs [block!]
-    /local result pos val kw-type kw-args body inner cbs ta a col-img frm-ops leftover attrs
+    /local result pos val kw-type kw-args body inner cbs ta a col-img frm-ops leftover attrs tbl-hstyle tb
 ][
     result: copy []
     pos: blk
@@ -95,6 +95,7 @@ parse-section: func [
             body: copy []
             col-img: none
             frm-ops: none
+            tbl-hstyle: none
             inner: next pos/1
             ; COLUMN: optional "image [styles]" clause after the text args carries the styles
             ; for contained IMAGE rows; the last block is the items. Generic args (before the
@@ -267,15 +268,27 @@ parse-section: func [
             case [
                 all [not tail? inner paren? inner/1][
                     val: do inner/1
-                    if block? val [body: parse-section/base val cbs]
+                    if block? val [
+                        either kw-type = 'table [
+                            tb: parse-table-rows val cbs
+                            body: tb/1  tbl-hstyle: tb/2
+                        ][
+                            body: parse-section/base val cbs
+                        ]
+                    ]
                     inner: next inner
                 ]
                 all [not tail? inner block? inner/1][
-                    either all [kw-type = 'image  not empty? inner/1  not block? inner/1/1][
-                        ; IMAGE caption: a value-leading block is ONE [value [styles]] line
-                        body: reduce [parse-pairs inner/1 cbs]
+                    either kw-type = 'table [
+                        tb: parse-table-rows inner/1 cbs
+                        body: tb/1  tbl-hstyle: tb/2
                     ][
-                        body: parse-section/base inner/1 cbs
+                        either all [kw-type = 'image  not empty? inner/1  not block? inner/1/1][
+                            ; IMAGE caption: a value-leading block is ONE [value [styles]] line
+                            body: reduce [parse-pairs inner/1 cbs]
+                        ][
+                            body: parse-section/base inner/1 cbs
+                        ]
                     ]
                     inner: next inner
                 ]
@@ -283,7 +296,7 @@ parse-section: func [
             ; anything after the items block is unexpected for a keyword item
             ; (a section silently losing a following block is a common bracket slip)
             leftover: either tail? inner [copy []][copy inner]
-            append/only result object [type: kw-type args: kw-args lines: body extra: leftover]
+            append/only result object [type: kw-type args: kw-args lines: body extra: leftover hstyle: tbl-hstyle]
             pos: next pos
             continue
         ]
@@ -300,6 +313,31 @@ parse-section: func [
     ]
     result
 ]
+
+    parse-table-rows: func [
+        {Parse TABLE rows. A leading style block in the first (header) row is the
+         header-row style and is returned separately (hstyle); it is not merged into
+         the column spec blocks.}
+        rows [block!] base [block!]
+        /local out hs first? row cells single s
+    ][
+        out: copy []
+        hs: none
+        first?: true
+        foreach row rows [
+            either all [first?  block? row  not empty? row  block? row/1  is-style? row/1][
+                hs: copy []
+                foreach s row/1 [append hs norm-arg s]
+                cells: copy next row
+                single: reduce [cells]
+            ][
+                single: reduce [row]
+            ]
+            append out parse-section/base single base
+            first?: false
+        ]
+        reduce [out hs]
+    ]
 
     ;--- Top-level page parsing -----------------------------------------------
 
@@ -1159,6 +1197,13 @@ parse-section: func [
                             ]
                             msg: schema-args-problem 'table ln/args
                             if msg [return rejoin [sec-name " line " i ": " msg]]
+                            if all [in ln 'hstyle  ln/hstyle][
+                                foreach s ln/hstyle [
+                                    unless style-word-ok? s [
+                                        return rejoin [sec-name " line " i ": unknown style word '" mold s "' in the TABLE header style block"]
+                                    ]
+                                ]
+                            ]
                             row: 0
                             foreach r ln/lines [
                                 row: row + 1

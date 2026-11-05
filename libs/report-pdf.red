@@ -1002,10 +1002,18 @@ report-pdf: make report-styles [
         either is-header [
             emit-filled-rect out tl box-top tw rh header-gray
         ][
-            if all [alt? (row-num // 2) = 0] [
-                emit-filled-rect out tl box-top tw rh alt-row-gray
+            ; ALT: shade every second data row; the other rows are painted white
+            ; (not left transparent) so an ALT table fully covers a DRAW-BG image.
+            if alt? [
+                emit-filled-rect out tl box-top tw rh either (row-num // 2) = 0 [alt-row-gray][1.0]
             ]
         ]
+
+        ; header text style: bold by default, over the header row's leading style
+        ; block (if any). The block is separate from the column specs, so header
+        ; styles never leak into the column defaults.
+        hdr-src: either (length? col-info) >= 8 [pick col-info 8][none]
+        hdr-styles: resolve-colors merge-styles ['b] any [hdr-src copy []]
 
         col-x: tl
         col-i: 1
@@ -1016,7 +1024,7 @@ report-pdf: make report-styles [
 
             either is-header [
                 col-text: pick col-titles col-i
-                emit-styled-text out (col-x + cell-pad) text-y col-text (c-w - (cell-pad * 2)) col-align ['b]
+                emit-styled-text out (col-x + cell-pad) text-y col-text (c-w - (cell-pad * 2)) col-align hdr-styles
             ][
                 cell-styles: either col-i <= length? row [
                     pair: pick row col-i
@@ -1621,6 +1629,7 @@ report-pdf: make report-styles [
 
                         header-row: table-rows/1
                         col-info: parse-columns header-row
+                        append/only col-info either in line 'hstyle [line/hstyle][none]
 
                         table-left: margin-left
                         table-width: 0

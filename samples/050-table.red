@@ -5,10 +5,12 @@ Red [
     Needs: 'View
 ]
 
-; The first row of a TABLE is its header: its style blocks define each column
-; (width in ch, alignment, number format). BOX draws the borders, ALT shades
-; every second data row. A table that runs out of room continues on the next
-; page and repeats the header; [PAGEBREAK] forces that here.
+; The first row of a TABLE is its header: a leading style block styles the header
+; text (bold by default; e.g. [ss/8 blue] for a smaller blue header), and the
+; style blocks after each header value define that column (width in ch/px,
+; alignment, number format). BOX draws the borders, ALT shades every second data
+; row. A table that runs out of room continues on the next page and repeats the
+; header; [PAGEBREAK] forces that here.
 ;
 report: [a5 landscape
     [HEADER [
@@ -17,7 +19,7 @@ report: [a5 landscape
     ]]
     [BODY [      
         [TABLE BOX ALT [
-            ["Product" [< px/200] "Qty" [> px/100] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
+            [[ss/8 blue] "Product" [< px/200] "Qty" [> px/100] "Unit" [> ch/10 money] "Total" [> ch/12 money]]
             ["Widget A" 120 25.00 3000.00]
             ["Widget B" 45 42.00 1890.00]
             ["Widget C" 12 35.00 420.00]

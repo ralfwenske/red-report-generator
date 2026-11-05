@@ -229,12 +229,17 @@ line-item    := [ value style-block? value style-block? … ]
 `[TABLE (BOX) (ALT) [rows]]`
 
 - The **first row of `rows` is the header row**: it is rendered with a gray fill and
-  bold text, and its style blocks define the *column specification* (§6).
+  bold text. A **leading style block** in that row styles the **header text** only
+  (bold by default, so `[ss/8 blue]` is a smaller blue header and `[!b red]` drops the
+  bold), and the style blocks that follow header values define the *column specification*
+  (§6). The leading block is kept separate and never leaks into the column specs.
 - The remaining rows are data rows. A data row is a line item whose segments map to
   columns positionally; missing cells render empty.
 - Modifiers, in any order:
   - `BOX` — draw the outer table border and vertical rules between columns.
-  - `ALT` — shade every second data row (`alt-row-gray`).
+  - `ALT` — shade every second data row (`alt-row-gray`); the **other data rows are
+    filled white (opaque)** instead of left transparent, so an `ALT` table fully covers
+    a `DRAW-BG` image behind it. Without `ALT` data rows stay transparent.
 - Rows may contain page-break items (`[PAGEBREAK]`, `[PAGEBREAK n]`, optionally with
   `[HEADER [...]]`/`[FOOTER [...]]` overrides); the table
   then continues on a new page and the **header row is repeated**.
@@ -537,7 +542,8 @@ next line if they do not fit, and a single value cannot be split.
 
 ## 6. Tables — column specification
 
-The header row's style blocks configure each column:
+The header row's per-value style blocks configure each column (a **leading** style
+block in the header row instead styles the header text — see §4.2):
 
 | Header style | Column effect |
 |---|---|

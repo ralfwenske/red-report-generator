@@ -66,7 +66,7 @@ Args are matched **by type, not position**; a modifier carries its optional valu
 | `HEADER` / `FOOTER` | inside `BODY` | style words | text lines → running override from **next page on** |
 | `BODY` | page level | style words | items |
 | `DRAW-BG` | page level | optional integer = raster density | raw draw ops |
-| `TABLE` | `BODY` | `BOX`/`ALT` (any order) + style words | rows; **first row = header + column spec** |
+| `TABLE` | `BODY` | `BOX`/`ALT` (any order) + style words | rows; **first row = header** (leading style block → header text style; per-value blocks → column spec) |
 | `COLUMN` | `BODY` | width? (`px/N`/`ch/N`/`auto`) `gap-ch/N`|`gap-px/N`? style-words? [`image` `[img-styles]`]? | rows (lines / `IMAGE` / `PAGEBREAK`) |
 | `IMAGE` | `BODY`, `COLUMN` | width? (shadow\|border)(/N)? colour? (`<`\|`^`\|`>`)? source | optional caption line `["cap" [styles]]` |
 | `PAGEBREAK` | `BODY`, `COLUMN`, `TABLE` rows | optional integer = reserve n lines; optional `[HEADER [...]]` / `[FOOTER [...]]` overrides (BODY/TABLE rows) | — |
@@ -77,6 +77,13 @@ Args are matched **by type, not position**; a modifier carries its optional valu
 
 Notes:
 
+- **`TABLE` header**: the first row is the header. A **leading style block** there styles
+  the header **text** (bold by default; `[ss/8 blue]`, `[!b red]` to unbold); a style block
+  after each value is that column's spec (width/align/format/`b`/`blank`), inherited by the
+  data cells. The leading block never leaks into the column specs.
+- **`TABLE` `ALT`**: shades every second data row; the **other data rows are filled white**
+  (opaque), so an `ALT` table fully covers a `DRAW-BG` behind it. Without `ALT` data rows
+  stay transparent.
 - **`COLUMN`**: first arg is always the width (`N`/`ch/N`/`px/N`/`auto`, default auto),
   second is the gap (only if width is present — use `auto` to set just a gap),
   remaining style words style **line rows only**. `image [styles]` styles contained images.

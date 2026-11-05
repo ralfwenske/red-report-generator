@@ -60,6 +60,15 @@ committed. Without it, the PDF render warns and fails.
 - **IMAGE**: `[IMAGE width? (shadow|border)(/N)? colour? (<|^|>)? source]` with source
   `file!`/`string!`/`image!`; the optional `< ^ >` aligns the image block within the
   content width (or column cell); caption style block is pure text styles.
+- **TABLE**: the first row is the header. A **leading style block** in that row styles
+  the header **text** (bold by default: `[ss/8 blue]`; `[!b red]` to unbold), while a
+  style block after each value is that column's spec (width/align/format/`b`/`blank`),
+  inherited by data cells. The parser keeps the leading block separate on the TABLE
+  object as `hstyle` (`report-parser/parse-table-rows`); both renderers use
+  `merge-styles ['b] hstyle`. Never merge it into the column spec blocks.
+  With `ALT`, every second data row is shaded and the **other data rows are filled
+  opaque white** (not transparent), so an `ALT` table fully covers a `DRAW-BG` image;
+  without `ALT` data rows stay transparent.
 - **FRAME**: `[FRAME R [items] [draw-ops]]` — the **items block comes first** (it is
   measured, then the backdrop is drawn behind it). Both renderers bind the ops to a
   per-frame env (`x/y/w/h` = padded frame box, `cx/cy/cw/ch` = measured content box);
