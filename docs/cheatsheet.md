@@ -155,7 +155,7 @@ Header/footer use positional L/C/R and ignore these.
 | `s1000` | thousands separators, no decimals |
 | `w.d` (float, on a number) | `d` decimals; box width `w` characters |
 | `date` `time` `datetime` | format a `date!` value (or `<now>`) |
-| `blank` | table cells only: suppress `0` |
+| `blank` | suppress `0` numeric values (line segments and table cells); the width box (`w.d` / `ch/N` / `px/N`) is still reserved |
 | `ch/N` | width box of N **average characters** of this style |
 | `px/N` | width box of N **pixels** |
 | `auto` | `COLUMN` width only |

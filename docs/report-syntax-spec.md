@@ -417,7 +417,7 @@ proposal suggested "center if no alignment given" — *not* adopted; `'^` was ke
 | `date` / `time` / `datetime` | format a `date!` value as date / time (`hh:mm`) / date+time. Use `(now) [date]` / `(now) [time]` / `(now) [datetime]` |
 | `px/N` | literal N-pixel per-value width (see §5.4) |
 | `ch/N` | N average characters of the segment's style (see §5.4) |
-| `blank` | in table cells: suppress `0` numeric values |
+| `blank` | suppress `0` numeric values (line segments and table cells); the value's width box (float `w.d` integer part, `ch/N` or `px/N`) is still reserved, so a following segment keeps its position |
 
 A bare integer is **not** a width — write `px/N` or `ch/N` (validation rejects it as
 ambiguous).

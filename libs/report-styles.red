@@ -1867,6 +1867,9 @@ report-styles: context [
                 val
             ]
             number? val [
+                ; `blank` renders a zero number as empty (same rule as table cells),
+                ; so a line segment can suppress zero amounts too
+                if all [find styles 'blank  val = 0][return ""]
                 fmt: style-float styles
                 case [
                     find styles 'money [format-number-value val 'money]

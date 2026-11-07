@@ -69,6 +69,12 @@ committed. Without it, the PDF render warns and fails.
   With `ALT`, every second data row is shaded and the **other data rows are filled
   opaque white** (not transparent), so an `ALT` table fully covers a `DRAW-BG` image;
   without `ALT` data rows stay transparent.
+- **Number formatting** is centralized in `report-styles/format-pair-value` (used by
+  both renderers and by measurement), so `blank` suppresses a zero number there too —
+  it works on line segments, not only in table cells. A suppressed value still occupies
+  its width box (float `w` part, `ch/N` or `px/N`): the renderers' join cursor advance
+  (`draw-styled-text`/`emit-styled-text`) moves past an empty text by that box, so
+  following segments keep their position.
 - **FRAME**: `[FRAME R [items] [draw-ops]]` — the **items block comes first** (it is
   measured, then the backdrop is drawn behind it). Both renderers bind the ops to a
   per-frame env (`x/y/w/h` = padded frame box, `cx/cy/cw/ch` = measured content box);

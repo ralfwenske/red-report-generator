@@ -704,7 +704,20 @@ report-view: make report-styles [
         /local any-style? wpx seg-w n fg sz fh tw dx dy link-id hint-id ascent m bt bb
 
     ][
-        if (length? text) = 0 [exit]
+        if (length? text) = 0 [
+            ; a suppressed value (e.g. a `blank` zero) still occupies its width box
+            ; (float w.d integer part, ch/N or px/N), so a following joined segment
+            ; keeps its position instead of sliding left
+            if join [
+                wpx: style-width-px styles
+                if wpx = 0 [
+                    n: style-chars styles
+                    if n > 0 [wpx: to integer! (n * avg-char-width styles font-size-for styles)]
+                ]
+                join-x: join-x + wpx
+            ]
+            exit
+        ]
 
         any-style?: any [
             style-has styles 'b

@@ -802,7 +802,6 @@ report-pdf: make report-styles [
         out [string!] x [number!] y [number!] text [string!]
         col-w [integer!] align [string!] styles [block!]
         /join "Use cursor chaining for left-aligned segments"    ][
-        if empty? text [exit]
         any-style?: any [
             style-has styles 'b
             style-has styles 'i
@@ -825,6 +824,14 @@ report-pdf: make report-styles [
         if wpx = 0 [
             n: style-chars styles
             if n > 0 [wpx: to integer! (n * avg-char-width font-no sz)]
+        ]
+
+        if empty? text [
+            ; a suppressed value (e.g. a `blank` zero) still occupies its width box
+            ; (float w.d integer part, ch/N or px/N), so a following joined segment
+            ; keeps its position instead of sliding left
+            if join [set-jx (jx + wpx)]
+            exit
         ]
 
         mm: pdf-metrics text styles
